@@ -21,10 +21,14 @@ as a way of being able to serve up a whole website from a zip file, and
 thought that it would make a perfect first use for UNFS2GO.
 
 Build:
-go build unfs2go.go unfs2go_exports.go
+	go build unfs2go.go unfs2go_exports.go
 
 
 Usage:
+You'll probably need rcpbind and nfs-common packages on all machines involved.
+In debian:
+	sudo apt-get install rpcbind nfs-common
+	
 Let it be that a zip file "voynich_manuscript.zip" exists, whose contents are
 inside a folder by the name of "vman"
 
