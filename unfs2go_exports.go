@@ -5,8 +5,6 @@ package main
 import "C"
 import (
 	"./vfs"
-	"./vfs/zipfs"
-	"archive/zip"
 	"container/list"
 	"fmt"
 	"io/ioutil"
@@ -15,21 +13,15 @@ import (
 	"unsafe"
 )
 
-var zipfilepath string
-
 //Paths are stored here, at index == filedescriptor - 100
 var Pathlist *list.List
 
-var fs vfs.FileSystem //filesystem, in this example a zip file
+var fs vfs.FileSystem //virtual filesystem that will be used as backend
+//TODO: change this to a vfs.NameSpace, to which various vfs's may be attached
 
 //export go_init
 func go_init() C.int {
-	C.exports_parse(C.CString("/"), C.CString("ro"))
-	//Supposedly these strings have to be freed at some point
-
 	Pathlist = list.New()
-	rc, _ := zip.OpenReader(zipfilepath)
-	fs = zipfs.New(rc, zipfilepath)
 	return 0
 }
 

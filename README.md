@@ -45,7 +45,11 @@ Thus there are obviously some limitations, most of which are probably unknown.
 Of the known:
 -There seems to be a limitation to zipfs that prevents mounting the "root" directory
 of a zip file. Only subfolders can be mounted.
-
+-In some (many? most?) systems, the server fails at start with an error along the
+lines of "RPC: Authentication error; why = Client credential too weak". It's some
+weird thing with rpcbind, and as a casual linux user, I'm not sure what to do about
+this. So far, the only solutions I've found are running unfs2go as root/sudo or running rpcbind in insecure mode (-i). If anyone has any further information, I'd greatly
+appreciate it.
 
 License Stuff:
 

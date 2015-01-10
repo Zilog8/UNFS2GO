@@ -5,7 +5,7 @@
  * Portions (C) 2004, Pascal Schmidt
  * see file LICENSE for license details
  */
-
+#include <signal.h>
 #include <rpc/svc.h>
 #include <stdio.h>
 #include <rpc/rpc.h>

@@ -1,5 +1,7 @@
 #include <utime.h> //utimbuf
 
+char *go_readdir_helper(char *, int);
+
 int go_nop(void) {
 	errno = ENOSYS;
 	return -1;
