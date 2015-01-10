@@ -13,25 +13,40 @@ import (
 	"errors"
 	"fmt"
 "os"
-	"strconv"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("Need arguments! Options:")
-		fmt.Println("-z /path/to/zip                 Sets the specified zip archive as the backend.")
-		return
-	}
 
-	tfs, err := parseArgs(os.Args[1:])
+	fs = make(vfs.NameSpace)
+	args := os.Args[1:]
+	
+	loadOne := false
+	
+	for len(args)>=4 {
+		oneMorsel :=  args[:4]
+		args = args[4:]
+		
+		tfs, err := parseArgs(oneMorsel[:3])
 
 	if err != nil {
-		fmt.Println("Error setting up backend:", err)
-		return
+			fmt.Println("Error setting up backend", oneMorsel, ":", err)
+		} else {		
+			fs.Bind(oneMorsel[3], tfs, oneMorsel[2], vfs.BindReplace)
+			loadOne = true
+		}
+	}
+	
+	if len(args)>0 {
+		fmt.Println("Insufficient arguments:", args)
+		fmt.Println("Examples:")
+		fmt.Println("-z /zipfile /path/in/zip /nfs/path      //Exports a path in a zip file, to the specified NFS path.")
 	}
 
-	fs = tfs
+	if loadOne {
+		//TODO: Make this full-permission some day
+		C.exports_parse(C.CString("/"), C.CString("ro"))
 	C.start()
+}
 }
 
 func parseArgs(args []string) (vfs.FileSystem, error) {
@@ -44,16 +59,17 @@ func parseArgs(args []string) (vfs.FileSystem, error) {
 }
 
 func zipfsPrep(args []string) (vfs.FileSystem, error) {
-	if len(args) != 1 {
-		return nil, errors.New("Inappropriate number of arguments. Need 1, got " + strconv.Itoa(len(args)))
-	}
-
 	rc, err := zip.OpenReader(args[0])
 	if err != nil {
 		return nil, errors.New("Error opening zip for reading: " + err.Error())
 	}
-
-	//TODO: Permit users to select paths other than "/", once we start using vfs.NameSpace
-	C.exports_parse(C.CString("/"), C.CString("ro"))
-	return zipfs.New(rc, args[0]), nil
+	zfs := zipfs.New(rc, args[0])
+	
+	//verify that the requested bind path exists in the zip file
+	_, err = zfs.ReadDir(args[1])
+	if err != nil {
+		zfs.Close()
+		return nil, errors.New("Error setting bind path in zip: " + err.Error())
+	}	
+	return zfs, nil
 }

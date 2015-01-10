@@ -20,6 +20,7 @@ type FileSystem interface {
 	Stat(path string) (os.FileInfo, error)
 	ReadDir(path string) ([]os.FileInfo, error)
 	String() string
+	Close() error
 }
 
 // Opener is a minimal virtual filesystem that can only open regular files.

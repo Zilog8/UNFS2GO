@@ -16,8 +16,7 @@ import (
 //Paths are stored here, at index == filedescriptor - 100
 var Pathlist *list.List
 
-var fs vfs.FileSystem //virtual filesystem that will be used as backend
-//TODO: change this to a vfs.NameSpace, to which various vfs's may be attached
+var fs vfs.NameSpace //virtual filesystem that will house the backends
 
 //export go_init
 func go_init() C.int {
@@ -137,7 +136,7 @@ func go_close(fd C.int) C.int {
 func getStat(pp string, fd int, buf *C.go_statstruct) C.int {
 	fi, err := fs.Stat(pp)
 	if err != nil {
-		fmt.Println("Error stat: ", pp, " interal stat errored")
+		fmt.Println("Error stat: ", pp, " internal stat errored")
 		return -1
 	}
 	buf.st_dev = C.uint32(1)
@@ -183,6 +182,8 @@ func go_pread(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
 		fmt.Println("Error on pread ", pp, " (fd = ", gofd, ") ", err)
 		return -1
 	}
+	
+	//TODO: fix this
 	//seek doesn't work on the zip file,
 	//so just dump it all and excise what's needed
 	byt, err := ioutil.ReadAll(file)

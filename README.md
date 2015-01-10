@@ -1,55 +1,68 @@
 UNFS2GO
 
 My first "project" in CGO (and C for that matter);
-A fork of UNFS3 (Usermode NFS3 server) that uses Go as a backend.
+A fork of UNFS3 (Usermode NFS3 server) that uses Go backends.
 
-The sample implementation uses the "zipfs" package found in the godoc
-tool's source code to serve a zip file's contents (read-only).
+The Go backends are abstracted through the vfs.NameSpace package found in
+godoc. This permits multiple backends to be bound to the same virtual
+filesystem. The first implemented backend is zip files, using the "zipfs"
+package also from godoc. For the time being, it's all read-only.
 
 Why:
-I have a server without FUSE and who's kernel I can't modify.
-I noticed it could mount NFS, however, so I started wondering if
-NFS could be used as a poor-man's FUSE? Since I couldn't find an NFS server
-in Go to hack, I figured I'd make one myself. Upon seeing the complexity
-of the NFS protocol, I figured my best bet was to re-purposed a
-pre-existing usermode NFS server. The best option I could find was UNFS3,
-which unfortunately is written in C. Since I didn't know C, I used CGO to
-create this gruesome chimera of UNFS3 and a Go backend.
+I have a server without FUSE and whose kernel I can't modify.
+It can mount NFS shares however, so I started wondering if NFS could be
+used as a poor-man's FUSE? Since I couldn't find an NFS server in Go, and
+upon seeing the complexity of the NFS protocol, I figured my best bet was
+to re-purposed a pre-existing usermode NFS server. The best option I could
+find was UNFS3, which unfortunately is written in C. Since I didn't know C,
+I used CGO to create this chimera.
 
-Around the same time, I was monkeying around with godoc's zipfs package
-as a way of being able to serve up a whole website from a zip file, and
+Around the same time, I was monkeying around with godoc's zipfs package and
 thought that it would make a perfect first use for UNFS2GO.
 
 Build:
 	go build unfs2go.go unfs2go_exports.go
 
-
-Usage:
-You'll probably need rcpbind and nfs-common packages on all machines involved.
+Dependencies:
+You'll probably need the rcpbind and nfs-common packages.
 In debian:
 	sudo apt-get install rpcbind nfs-common
 	
-Let it be that a zip file "voynich_manuscript.zip" exists, whose contents are
-inside a folder by the name of "vman"
+Usage:
+Arguments are given in multiples of 4; each quartet representing a binding:
+	1) bind type							Ex.:  -z
+	2) config1								Ex.:  ./voynich_manuscript.zip
+	3) config2								Ex.:  /vman
+	4) path to bind to in the NFS server	Ex.:  /voyzip
+For example:
+	unfs2go -z ./voynich_manuscript.zip /vman /voyzip
+	
+You can add multiple quartets at a time:
+	unfs2go -z ./mydocs1.zip /docs /zip1 -z ./mydocs2.zip /docs2 /zip2
+	
+You can even place bindings inside other bindings:
+	unfs2go -z ./mydocs1.zip /docs /zip1 -z ./mydocs2.zip /docs2 /zip1/zip2
 
-	on server (ipaddress == 192.168.1.1):
-	./unfs2go ./voynich_manuscript.zip
+Backends:
+bind type	1st configuration	2nd configuration	description
+-z			zipfile 			path/in/zip			uses a zip file's contents
 
-	on client:
-	mount 192.168.1.1:/vman /mountpoint
-
+Mounting:
+Mount the NFS path as you would normally. For the first example:
+	mount 127.0.0.1:/voyzip /mnt/point
 
 Limitations:
-This is a horrible hack by a someone who doesn't know much Go and even less C.
+This is a horrible hack by a someone who doesn't know much Go and knows even less C.
 Thus there are obviously some limitations, most of which are probably unknown.
 Of the known:
--There seems to be a limitation to zipfs that prevents mounting the "root" directory
-of a zip file. Only subfolders can be mounted.
+-There seems to be a limitation to zipfs that prevents binding the "root"
+directory of a zip file. For now, only non-root directories can be bound.
 -In some (many? most?) systems, the server fails at start with an error along the
 lines of "RPC: Authentication error; why = Client credential too weak". It's some
-weird thing with rpcbind, and as a casual linux user, I'm not sure what to do about
-this. So far, the only solutions I've found are running unfs2go as root/sudo or running rpcbind in insecure mode (-i). If anyone has any further information, I'd greatly
-appreciate it.
+weird thing with rpcbind, and as a casual linux user I'm not sure what to do about
+this. So far, the only solutions I've found are running unfs2go as root/sudo or
+running rpcbind in insecure mode (-i). If anyone has any further information, I'd
+greatly appreciate it.
 
 License Stuff:
 
@@ -60,9 +73,9 @@ for that code.
 In the "vfs" folder you'll find the code that's been re-purposed from the godoc
 tool, as well as the AUTHORS, LICENSE, etc. files for that code.
 
-Also, you'll find here a .zip file ("voynich_manuscript.zip"), a thumbnail copy of the
-Voynich Manuscript gotten from Archive.org, just for testing purposes. That is a
-Public Domain work.
+Also, you'll find here a .zip file ("voynich_manuscript.zip"), a thumbnail copy of
+the Voynich Manuscript gotten from Archive.org, just for testing purposes. That is
+a Public Domain work.
 
 As for my paltry code and modifications:
 
