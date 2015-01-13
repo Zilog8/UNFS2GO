@@ -57,6 +57,7 @@ You can even place bindings inside other bindings:
 Backends:
 
 bind type	1st configuration	2nd configuration	description
+
 -z			zipfile 			path/in/zip			uses a zip file's contents
 
 Mounting:
