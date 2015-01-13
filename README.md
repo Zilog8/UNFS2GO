@@ -9,6 +9,7 @@ filesystem. The first implemented backend is zip files, using the "zipfs"
 package also from godoc. For the time being, it's all read-only.
 
 Why:
+
 I have a server without FUSE and whose kernel I can't modify.
 It can mount NFS shares however, so I started wondering if NFS could be
 used as a poor-man's FUSE? Since I couldn't find an NFS server in Go, and
@@ -21,9 +22,11 @@ Around the same time, I was monkeying around with godoc's zipfs package and
 thought that it would make a perfect first use for UNFS2GO.
 
 Build:
+
 	go build unfs2go.go unfs2go_exports.go
 
 Dependencies:
+
 You'll probably need the rcpbind and nfs-common packages.
 In debian:
 	sudo apt-get install rpcbind nfs-common
@@ -40,26 +43,33 @@ Arguments are given in multiples of 4; each quartet representing a binding:
 	4) path to bind to in the NFS server	Ex.:  /voyzip
 	
 For example:
+
 	unfs2go -z ./voynich_manuscript.zip /vman /voyzip
 	
 You can add multiple quartets at a time:
+
 	unfs2go -z ./mydocs1.zip /docs /zip1 -z ./mydocs2.zip /docs2 /zip2
 	
 You can even place bindings inside other bindings:
+
 	unfs2go -z ./mydocs1.zip /docs /zip1 -z ./mydocs2.zip /docs2 /zip1/zip2
 
 Backends:
+
 bind type	1st configuration	2nd configuration	description
 -z			zipfile 			path/in/zip			uses a zip file's contents
 
 Mounting:
+
 Mount the NFS path as you would normally. For the first example:
 	mount 127.0.0.1:/voyzip /mnt/point
 
 Limitations:
+
 This is a horrible hack by a someone who doesn't know much Go and knows even less C.
 Thus there are obviously some limitations, most of which are probably unknown.
 Of the known:
+
 -There seems to be a limitation to zipfs that prevents binding the "root"
 directory of a zip file. For now, only non-root directories can be bound.
 -In some (many? most?) systems, the server fails at start with an error along the
