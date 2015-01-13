@@ -30,6 +30,7 @@ In debian:
 	
 Usage:
 Arguments are given in multiples of 4; each quartet representing a binding:
+
 	1) bind type							Ex.:  -z
 	
 	2) config1								Ex.:  ./voynich_manuscript.zip
