@@ -31,9 +31,13 @@ In debian:
 Usage:
 Arguments are given in multiples of 4; each quartet representing a binding:
 	1) bind type							Ex.:  -z
+	
 	2) config1								Ex.:  ./voynich_manuscript.zip
+	
 	3) config2								Ex.:  /vman
+	
 	4) path to bind to in the NFS server	Ex.:  /voyzip
+	
 For example:
 	unfs2go -z ./voynich_manuscript.zip /vman /voyzip
 	
