@@ -753,6 +753,8 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
     if (result.status == NFS3_OK) {
         change_readdir_cookie();
 	res = backend_rmdir(obj);
+	if (res == -2)
+	    result.status = NFS3ERR_NOTEMPTY;
 	if (res == -1)
 	    result.status = rmdir_err();
     }

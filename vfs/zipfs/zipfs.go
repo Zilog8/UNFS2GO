@@ -26,8 +26,8 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"../../vfs"
+	"errors"
+	"../../afero"
 )
 
 // zipFI is the zip-file based implementation of FileInfo
@@ -77,7 +77,7 @@ type zipFS struct {
 	name string
 }
 
-func (fs *zipFS) String() string {
+func (fs *zipFS) Name() string {
 	return "zip(" + fs.name + ")"
 }
 
@@ -108,7 +108,7 @@ func (fs *zipFS) stat(abspath string) (int, zipFI, error) {
 	return i, zipFI{name, file}, nil
 }
 
-func (fs *zipFS) Open(abspath string) (vfs.ReadSeekCloser, error) {
+func (fs *zipFS) Open(abspath string) (afero.File, error) {
 	_, fi, err := fs.stat(zipPath(abspath))
 	if err != nil {
 		return nil, err
@@ -120,30 +120,113 @@ func (fs *zipFS) Open(abspath string) (vfs.ReadSeekCloser, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &zipSeek{fi.file, r}, nil
+	return &zipFile{fi.file, r, r, nil, nil, nil, nil}, nil
 }
 
-type zipSeek struct {
+type zipFile struct {
 	file *zip.File
-	io.ReadCloser
+	io.Closer
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+	io.Writer
+	io.WriterAt
 }
 
-func (f *zipSeek) Seek(offset int64, whence int) (int64, error) {
+func (f *zipFile) nop() error{
+	return errors.New("zipfs: Unsupported operation.")
+}
+
+func (f *zipFile) Stat() (os.FileInfo, error) {
+	return nil, f.nop()
+}
+func (f *zipFile) 	Readdir(count int) ([]os.FileInfo, error) {
+	return nil, f.nop()
+}
+func (f *zipFile) 	Readdirnames(n int) ([]string, error) {
+	return nil, f.nop()
+}
+func (f *zipFile) 	WriteString(s string) (ret int, err error) {
+	return 0, f.nop()
+}
+func (f *zipFile) 	Truncate(size int64) error {
+	return f.nop()
+}
+func (f *zipFile) 	Name() string {
+	return "zipFile"
+}
+func (f *zipFile) 	Sync() error {
+	return nil
+}
+
+
+func (f *zipFile) Seek(offset int64, whence int) (int64, error) {
 	if whence == 0 && offset == 0 {
 		r, err := f.file.Open()
 		if err != nil {
 			return 0, err
 		}
 		f.Close()
-		f.ReadCloser = r
+		f.Reader = r
+		f.Closer = r
 		return 0, nil
 	}
+	
+	//TODO: fix this
+	//seek doesn't work on the zip file,
+	//so just dump it all and excise what's needed
+	/* byt, err := ioutil.ReadAll(file)
+	if err != nil {
+		fmt.Println("Error on pread ", pp)
+	}
+
+	off := int(offset)
+	if len(byt) <= off {
+		//file's too small for offset requested
+		return -1
+	} */
+	
 	return 0, fmt.Errorf("unsupported Seek in %s", f.file.Name)
 }
 
-func (fs *zipFS) Lstat(abspath string) (os.FileInfo, error) {
-	_, fi, err := fs.stat(zipPath(abspath))
-	return fi, err
+func (fs *zipFS) Chmod(abspath string, mode os.FileMode) error {
+	return fs.nop()
+}
+
+func (fs *zipFS) Chtimes(name string, atime time.Time, mtime time.Time) error {
+	return fs.nop()
+}
+
+func (fs *zipFS) Create(name string) (afero.File, error) {
+	return nil, fs.nop()
+}
+
+func (fs *zipFS) Mkdir(name string, perm os.FileMode) error {
+	return fs.nop()
+}
+
+func (fs *zipFS) MkdirAll(path string, perm os.FileMode) error {
+	return fs.nop()
+}
+
+func (fs *zipFS) Remove(name string) error {
+	return fs.nop()
+}
+
+func (fs *zipFS) RemoveAll(path string) error {
+	return fs.nop()
+}
+
+func (fs *zipFS) Rename(oldname, newname string) error {
+	return fs.nop()
+}
+
+func (fs *zipFS) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error){
+	return &zipFile{nil, nil, nil, nil, nil, nil, nil}, fs.nop()
+}
+
+func (fs *zipFS) nop() error{
+	return errors.New("zipfs: Unsupported operation.")
 }
 
 func (fs *zipFS) Stat(abspath string) (os.FileInfo, error) {
@@ -189,7 +272,7 @@ func (fs *zipFS) ReadDir(abspath string) ([]os.FileInfo, error) {
 	return list, nil
 }
 
-func New(rc *zip.ReadCloser, name string) vfs.FileSystem {
+func New(rc *zip.ReadCloser, name string) afero.Fs {
 	list := make(zipList, len(rc.File))
 	copy(list, rc.File) // sort a copy of rc.File
 	sort.Sort(list)

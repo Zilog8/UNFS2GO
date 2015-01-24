@@ -97,5 +97,4 @@ typedef struct dirent
     char *d_name;
 } dirent;
 
-int go_nop(void); 
 #endif

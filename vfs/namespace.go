@@ -5,6 +5,8 @@
 package vfs
 
 import (
+	"../afero"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,7 +18,9 @@ import (
 
 // Setting debugNS = true will enable debugging prints about
 // name space translations.
-const debugNS = false
+const debugNS = true
+
+var debugDB map[string]bool
 
 // A NameSpace is a file system made up of other file systems
 // mounted at specific locations in the name space.
@@ -51,7 +55,7 @@ const debugNS = false
 //
 // A particular mount point entry is a triple (old, fs, new), meaning that to
 // operate on a path beginning with old, replace that prefix (old) with new
-// and then pass that path to the FileSystem implementation fs.
+// and then pass that path to the afero.Fs implementation fs.
 //
 // Given this name space, a ReadDir of /src/pkg/code will check each prefix
 // of the path for a mount point (first /src/pkg/code, then /src/pkg, then /src,
@@ -99,7 +103,7 @@ type NameSpace map[string][]mountedFS
 // a prefix 'old' with 'new' and then calling the fs methods.
 type mountedFS struct {
 	old string
-	fs  FileSystem
+	fs  afero.Fs
 	new string
 }
 
@@ -116,7 +120,18 @@ func (m mountedFS) translate(path string) string {
 	if !hasPathPrefix(path, m.old) {
 		panic("translate " + path + " but old=" + m.old)
 	}
-	return pathpkg.Join(m.new, path[len(m.old):])
+
+	result := pathpkg.Join(m.new, path[len(m.old):])
+
+	if debugNS {
+		key := path + " tx.to " + fmt.Sprint(m)
+		if !debugDB[key] {
+			debugDB[key] = true
+			//fmt.Printf("tx %s: %v\n", path, result)
+		}
+	}
+
+	return result
 }
 
 func (NameSpace) String() string {
@@ -161,7 +176,11 @@ const (
 // but earlier ones are still consulted for paths that do not exist in newfs.
 // If mode is BindAfter, this redirection happens only after existing ones
 // have been tried and failed.
-func (ns NameSpace) Bind(old string, newfs FileSystem, new string, mode BindMode) {
+func (ns NameSpace) Bind(old string, newfs afero.Fs, new string, mode BindMode) {
+	if debugDB == nil {
+		debugDB = map[string]bool{}
+	}
+
 	old = ns.clean(old)
 	new = ns.clean(new)
 	m := mountedFS{old, newfs, new}
@@ -184,7 +203,7 @@ func (ns NameSpace) Bind(old string, newfs FileSystem, new string, mode BindMode
 			if !hasPathPrefix(old, m.old) {
 				// This should not happen.  If it does, panic so
 				// that we can see the call trace that led to it.
-				panic(fmt.Sprintf("invalid Bind: old=%q m={%q, %s, %q}", old, m.old, m.fs.String(), m.new))
+				panic(fmt.Sprintf("invalid Bind: old=%q m={%q, %s, %q}", old, m.old, m.fs.Name(), m.new))
 			}
 			suffix := old[len(m.old):]
 			m.old = pathpkg.Join(m.old, suffix)
@@ -195,13 +214,96 @@ func (ns NameSpace) Bind(old string, newfs FileSystem, new string, mode BindMode
 	ns[old] = mtpt
 }
 
+func (ns NameSpace) Remove(name string) error {
+	//TODO, verify that it's not a bind point
+	mFS := ns.resolve(name)
+	reterr := fmt.Sprintln("No suitable backend found for Remove: ", name)
+	for i, m := range mFS {
+		err := m.fs.Remove(m.translate(name))
+		if err == nil {
+			return nil
+		} else {
+			reterr = fmt.Sprintln(reterr, i, "- Failed at ", m, "due to ", err)
+		}
+	}
+	return errors.New(reterr)
+}
+
+func (ns NameSpace) Mkdir(name string, perm os.FileMode) error {
+	mFS := ns.resolve(name)
+
+	reterr := fmt.Sprintln("No suitable backend found for Mkdir: ", name)
+	for i, m := range mFS {
+		err := m.fs.Mkdir(m.translate(name), perm)
+		if err == nil {
+			return nil
+		} else {
+			reterr = fmt.Sprintln(reterr, i, "- Failed at ", m, "due to ", err)
+		}
+	}
+	return errors.New(reterr)
+}
+
+func (ns NameSpace) Rename(oldpath string, newpath string) error {
+	oldFSa := ns.resolve(oldpath)
+
+	var oldFS mountedFS
+	found := false
+	for _, m := range oldFSa {
+		f, err := m.fs.Stat(m.translate(oldpath))
+		if err == nil {
+			if int64(f.Mode().Perm()) >= 384 { // >= octal 600; Read&Write permission
+				oldFS = m
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		return errors.New(fmt.Sprintln("No suitable backend found for Rename old path: ", oldpath))
+	}
+
+	return oldFS.fs.Rename(oldFS.translate(oldpath), oldFS.translate(newpath))
+	//TODO: Finish this function to handle all the edge cases: One fs to another, etc.
+
+	/*
+		newFSa := ns.resolve(newpath)
+		if len(newFSa)==0 {
+			return errors.New( fmt.Sprintln("No suitable backend found for Rename new path: ", newpath))
+		}
+
+		for _, m := range newFSa {
+
+		}
+	*/
+}
+
+func (ns NameSpace) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
+	mFS := ns.resolve(name)
+
+	reterr := fmt.Sprintln("No suitable backend found for OpenFile: ", name)
+	for i, m := range mFS {
+		f, err := m.fs.OpenFile(m.translate(name), flag, perm)
+		if err == nil {
+			return f, nil
+		} else {
+			reterr = fmt.Sprintln(reterr, i, "- Failed at ", m, "due to ", err)
+		}
+	}
+	return nil, errors.New(reterr)
+}
+
 // resolve resolves a path to the list of mountedFS to use for path.
 func (ns NameSpace) resolve(path string) []mountedFS {
 	path = ns.clean(path)
 	for {
 		if m := ns[path]; m != nil {
 			if debugNS {
-				fmt.Printf("resolve %s: %v\n", path, m)
+				key := path + " re.to " + fmt.Sprint(m)
+				if !debugDB[key] {
+					debugDB[key] = true
+					//fmt.Printf("resolved %s: %v\n", path, m)
+				}
 			}
 			return m
 		}
@@ -213,13 +315,25 @@ func (ns NameSpace) resolve(path string) []mountedFS {
 	return nil
 }
 
-// Open implements the FileSystem Open method.
-func (ns NameSpace) Open(path string) (ReadSeekCloser, error) {
+func (ns NameSpace) Chtimes(name string, atime time.Time, mtime time.Time) error {
+	FSa := ns.resolve(name)
+
+	for _, m := range FSa {
+		trueName := m.translate(name)
+		f, err := m.fs.Stat(trueName)
+		if err == nil {
+			if int64(f.Mode().Perm()) >= 384 { // >= octal 600; Read&Write permission
+				return m.fs.Chtimes(trueName, atime, mtime)
+			}
+		}
+	}
+	return errors.New(fmt.Sprintln("No suitable backend found for Chtimes: ", name))
+}
+
+// Open implements the afero.Fs Open method.
+func (ns NameSpace) Open(path string) (afero.File, error) {
 	var err error
 	for _, m := range ns.resolve(path) {
-		if debugNS {
-			fmt.Printf("tx %s: %v\n", path, m.translate(path))
-		}
 		r, err1 := m.fs.Open(m.translate(path))
 		if err1 == nil {
 			return r, nil
@@ -234,8 +348,8 @@ func (ns NameSpace) Open(path string) (ReadSeekCloser, error) {
 	return nil, err
 }
 
-// stat implements the FileSystem Stat and Lstat methods.
-func (ns NameSpace) stat(path string, f func(FileSystem, string) (os.FileInfo, error)) (os.FileInfo, error) {
+// stat implements the afero.Fs Stat method.
+func (ns NameSpace) stat(path string, f func(afero.Fs, string) (os.FileInfo, error)) (os.FileInfo, error) {
 	var err error
 	for _, m := range ns.resolve(path) {
 		fi, err1 := f(m.fs, m.translate(path))
@@ -253,11 +367,7 @@ func (ns NameSpace) stat(path string, f func(FileSystem, string) (os.FileInfo, e
 }
 
 func (ns NameSpace) Stat(path string) (os.FileInfo, error) {
-	return ns.stat(path, FileSystem.Stat)
-}
-
-func (ns NameSpace) Lstat(path string) (os.FileInfo, error) {
-	return ns.stat(path, FileSystem.Lstat)
+	return ns.stat(path, afero.Fs.Stat)
 }
 
 // dirInfo is a trivial implementation of os.FileInfo for a directory.
@@ -272,7 +382,7 @@ func (d dirInfo) Sys() interface{}   { return nil }
 
 var startTime = time.Now()
 
-// ReadDir implements the FileSystem ReadDir method.  It's where most of the magic is.
+// ReadDir implements the virtual filesystem ReadDir method.  It's where most of the magic is.
 // (The rest is in resolve.)
 //
 // Logically, ReadDir must return the union of all the directories that are named
@@ -299,7 +409,7 @@ func (ns NameSpace) ReadDir(path string) ([]os.FileInfo, error) {
 	)
 
 	for _, m := range ns.resolve(path) {
-		dir, err1 := m.fs.ReadDir(m.translate(path))
+		dir, err1 := afero.ReadDir(m.translate(path), m.fs)
 		if err1 != nil {
 			if err == nil {
 				err = err1
@@ -370,6 +480,7 @@ func (ns NameSpace) ReadDir(path string) ([]os.FileInfo, error) {
 	}
 
 	sort.Sort(byName(all))
+
 	return all, nil
 }
 

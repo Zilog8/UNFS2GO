@@ -5,21 +5,24 @@ A fork of UNFS3 (Usermode NFS3 server) that uses Go backends.
 
 The Go backends are abstracted through the vfs.NameSpace package found in
 godoc. This permits multiple backends to be bound to the same virtual
-filesystem. The first implemented backend is zip files, using the "zipfs"
-package also from godoc. For the time being, it's all read-only.
+filesystem. Backends implement the afero.Fs interface, from the afero
+project, making it easier to swap between them, and for you to implement
+your own backends as well. The first implemented backend is zip files
+(read-only), using the "zipfs" package also from godoc.
 
 Why:
 
 I have a server without FUSE and whose kernel I can't modify.
 It can mount NFS shares however, so I started wondering if NFS could be
-used as a poor-man's FUSE? Since I couldn't find an NFS server in Go, and
-upon seeing the complexity of the NFS protocol, I figured my best bet was
-to re-purposed a pre-existing usermode NFS server. The best option I could
-find was UNFS3, which unfortunately is written in C. Since I didn't know C,
-I used CGO to create this chimera.
-
-Around the same time, I was monkeying around with godoc's zipfs package and
-thought that it would make a perfect first use for UNFS2GO.
+used as a poor-man's FUSE?  Upon seeing the complexity of the NFS protocol,
+I figured my best bet was to re-purposed a pre-existing NFS server.
+Since I couldn't find an NFS server in Go, I settled on UNFS3, a usermode 
+server written in C. Because of the simplicity of CGO, it actually wasn't
+too difficult to bring this gruesome chimera into existence (despite my
+utter lack of C knowledge). Around the same time, I was monkeying around
+with godoc's zipfs package and thought that it would make a perfect first
+use for UNFS2GO. Some time later, I found Afero and figured it'd fit in 
+great.
 
 Build:
 
@@ -28,7 +31,9 @@ Build:
 Dependencies:
 
 You'll probably need the rcpbind and nfs-common packages.
+
 In debian:
+
 	sudo apt-get install rpcbind nfs-common
 	
 Usage:
@@ -36,9 +41,9 @@ Arguments are given in multiples of 4; each quartet representing a binding:
 
 	1) bind type							Ex.:  -z
 	
-	2) config1								Ex.:  ./voynich_manuscript.zip
+	2) 1st config							Ex.:  ./voynich_manuscript.zip
 	
-	3) config2								Ex.:  /vman
+	3) 2nd config							Ex.:  /vman
 	
 	4) path to bind to in the NFS server	Ex.:  /voyzip
 	
@@ -56,13 +61,15 @@ You can even place bindings inside other bindings:
 
 Backends:
 
-bind type	1st configuration	2nd configuration	description
-
--z			zipfile 			path/in/zip			uses a zip file's contents
+bind type  | 1st configuration | 2nd configuration | description
+---------- | ----------------- | ----------------- | -----------
+-z         | zipfile           | path/in/zip       | uses a zip file's contents. Read only.
+-o         | ignored           | path/in/fs        | shares a system path. Full access.
 
 Mounting:
 
 Mount the NFS path as you would normally. For the first example:
+
 	mount 127.0.0.1:/voyzip /mnt/point
 
 Limitations:
@@ -73,6 +80,7 @@ Of the known:
 
 -There seems to be a limitation to zipfs that prevents binding the "root"
 directory of a zip file. For now, only non-root directories can be bound.
+
 -In some (many? most?) systems, the server fails at start with an error along the
 lines of "RPC: Authentication error; why = Client credential too weak". It's some
 weird thing with rpcbind, and as a casual linux user I'm not sure what to do about
@@ -82,12 +90,17 @@ greatly appreciate it.
 
 License Stuff:
 
+In the "afero" folder you'll find the code that's been re-purposed from spf13's
+afero project ( https://github.com/spf13/afero ), as well as the LICENSE file
+for that code.
+
 In the "unfs3" folder you'll find the code that's been re-purposed from the UNFS3
 project ( http://unfs3.sourceforge.net/ ), as well as the CREDITS and LICENSE files
 for that code.
 
 In the "vfs" folder you'll find the code that's been re-purposed from the godoc
-tool, as well as the AUTHORS, LICENSE, etc. files for that code.
+tool (https://go.googlesource.com/tools/+/master/godoc/vfs), as well as the AUTHORS,
+LICENSE, etc. files for that code.
 
 Also, you'll find here a .zip file ("voynich_manuscript.zip"), a thumbnail copy of
 the Voynich Manuscript gotten from Archive.org, just for testing purposes. That is

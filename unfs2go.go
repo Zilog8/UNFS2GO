@@ -7,6 +7,7 @@ package main
 */
 import "C"
 import (
+	"./afero"
 	"./vfs"
 	"./vfs/zipfs"
 	"archive/zip"
@@ -17,7 +18,7 @@ import (
 
 func main() {
 
-	fs = make(vfs.NameSpace)
+	ns := make(vfs.NameSpace)
 	args := os.Args[1:]
 	
 	loadOne := false
@@ -31,45 +32,54 @@ func main() {
 	if err != nil {
 			fmt.Println("Error setting up backend", oneMorsel, ":", err)
 		} else {		
-			fs.Bind(oneMorsel[3], tfs, oneMorsel[2], vfs.BindReplace)
+			ns.Bind(oneMorsel[3], tfs, oneMorsel[2], vfs.BindReplace)
 			loadOne = true
 		}
 	}
 	
-	if len(args)>0 {
+	if !loadOne || len(args) > 0 {
 		fmt.Println("Insufficient arguments:", args)
 		fmt.Println("Examples:")
 		fmt.Println("-z /zipfile /path/in/zip /nfs/path      //Exports a path in a zip file, to the specified NFS path.")
+		fmt.Println("-o . /path/in/fs /nfs/path      		 //Exports a path in the filesystem, to the specified NFS path.")
 	}
 
 	if loadOne {
-		//TODO: Make this full-permission some day
-		C.exports_parse(C.CString("/"), C.CString("ro"))
+		fs = ns
+		C.exports_parse(C.CString("/"), C.CString("rw"))
 	C.start()
 }
 }
 
-func parseArgs(args []string) (vfs.FileSystem, error) {
+func parseArgs(args []string) (afero.Fs, error) {
 	switch args[0] {
 	case "-z":
 		return zipfsPrep(args[1:])
+	case "-o":
+		return osfsPrep(args[1:])
 	default:
 		return nil, errors.New("Not a recognized argument: " + args[0])
 	}
 }
 
-func zipfsPrep(args []string) (vfs.FileSystem, error) {
+func osfsPrep(args []string) (afero.Fs, error) {
+	return &afero.OsFs{}, nil
+}
+
+//TODO: Test this again, after the new changes.
+func zipfsPrep(args []string) (afero.Fs, error) {
 	rc, err := zip.OpenReader(args[0])
 	if err != nil {
 		return nil, errors.New("Error opening zip for reading: " + err.Error())
 	}
 	zfs := zipfs.New(rc, args[0])
 	
+	//TODO: reimplement this without ReadDir
 	//verify that the requested bind path exists in the zip file
-	_, err = zfs.ReadDir(args[1])
+	/* _, err = zfs.ReadDir(args[1])
 	if err != nil {
 		zfs.Close()
 		return nil, errors.New("Error setting bind path in zip: " + err.Error())
-	}	
+	}	 */
 	return zfs, nil
 }
