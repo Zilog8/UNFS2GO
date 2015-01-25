@@ -84,9 +84,11 @@ func go_readdir_helper(dirpath *C.char, entryIndex C.int) *C.char {
 	}
 
 	
-	//TODO: Have to add "." and "..", cause they're not showing up
-	//and the lack is causing Transmission's delete to infini-loop
-	//at function deleteLocalData( tr_torrent * tor, tr_fileFunc func )
+	//TODO: Have to add "." and "..", cause they're not showing up.
+	//TODO: For some reason directory reading isn't progressing appropriately in Transmission
+	//When remove&trash is selected. tr_sys_dir_read_name(), and by induction readdir(), 
+	//is constantly returning the same name on each call instead of progressing through
+	//the folder's contents.
 	return C.CString(arr[index].Name())
 }
 
