@@ -79,7 +79,8 @@ READDIR3res read_dir(const char *path, cookie3 cookie, cookieverf3 verf,
     upper = cookie & 0xFFFFFFFF00000000ULL;
     if (cookie != 0 && upper != rcookie) {
       /* ignore cookie if unexpected so we restart from the beginning */
-      cookie = 0;
+	  //Commented this out cause it made Transmission go into an infinite loop when removing-trashing a torrent.
+      //cookie = 0;
     }
     cookie &= 0xFFFFFFFFULL;
 
