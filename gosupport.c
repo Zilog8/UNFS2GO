@@ -131,6 +131,10 @@ int go_rename(const char *oldpath, const char *newpath){
     return go_nop("rename");
 }
 
+int go_fchmod(int fd, int mode) {
+	return go_nop("fchmod");
+}
+
 */
 
 int go_statvfs(const char *path, backend_statvfsstruct * buf){
@@ -157,9 +161,6 @@ int go_chmod(const char *path, int mode) {
 
 int go_lchmod(const char *path, int mode) {
 	return go_nop("lchmod");
-}
-int go_fchmod(int fd, int mode) {
-	return go_nop("fchmod");
 }
 
 int go_fchown(int fd, uid_t owner, gid_t group) {

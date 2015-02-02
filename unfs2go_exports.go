@@ -5,7 +5,6 @@ package main
 import "C"
 import (
 	"./afero"
-	"./vfs"
 	"container/list"
 	"errors"
 	"fmt"
@@ -19,7 +18,7 @@ import (
 //Paths are stored here, at index == filedescriptor - 100
 var Pathlist *list.List
 
-var fs vfs.NameSpace //virtual filesystem that will house the backends
+var ns afero.Fs //virtual filesystem that will house the backends
 
 //export go_init
 func go_init() C.int {
@@ -50,7 +49,7 @@ func getPath(fd int) (string, error) {
 func getFD(path string) int {
 	i := 100
 	//ok, check the filesystem for path existance
-	_, err := fs.Stat(path)
+	_, err := ns.Stat(path)
 	if err != nil {
 		//fmt.Println("Error getFD statin': ", path, " ", err)
 		return -1
@@ -72,37 +71,51 @@ func getFD(path string) int {
 //export go_readdir_helper
 func go_readdir_helper(dirpath *C.char, entryIndex C.int) *C.char {
 	pp := C.GoString(dirpath)
-	arr, err := fs.ReadDir(pp)
+	fi, err := ns.Stat(pp)
+	if err != nil || !fi.IsDir() {
+		fmt.Println("Error go_readdir_helper", pp, "is not a directory.")
+		return C.CString("")
+	}
+	fh, err := ns.Open(pp)
 	if err != nil {
-		fmt.Println("Error go_readdir_helper ", pp, " ", err)
+		fmt.Println("Error go_readdir_helper", pp, "opening ", err)
 		return C.CString("")
 	}
 	index := int(entryIndex)
+	arr, err := fh.Readdirnames(index + 1) //TODO: check if this is an appropriate offset
+	if err != nil {
+		fmt.Println("Error go_readdir_helper", pp, "reading names", err)
+		return C.CString("")
+	}
 	if index >= len(arr) {
 		fmt.Println("Error go_readdir_helper ", pp, " index out of bounds")
 		return C.CString("")
 	}
 
-	
-	//TODO: Have to add "." and "..", cause they're not showing up.
-	return C.CString(arr[index].Name())
+	return C.CString(arr[index])
 }
 
 //export go_opendir_helper
 func go_opendir_helper(path *C.char) C.int {
 	//Return -1 if error; else num of entries
 	pp := C.GoString(path)
-	fi, err := fs.Stat(pp)
+	fi, err := ns.Stat(pp)
 	if err != nil || !fi.IsDir() {
-		fmt.Println("Error go_opendir_helper ", pp)
+		fmt.Println("Error go_opendir_helper", pp, "is not a directory.")
 		return -1
 	}
-	arr, err := fs.ReadDir(pp)
+	fh, err := ns.Open(pp)
 	if err != nil {
-		fmt.Println("Error go_opendir_helper ", pp, " ", err)
+		fmt.Println("Error go_opendir_helper", pp, "opening", err)
+		return -1
+	}
+	arr, err := fh.Readdirnames(-1)
+	if err != nil {
+		fmt.Println("Error go_opendir_helper", pp, "reading names", err)
 		return -1
 	}
 
+	//TODO: Have to add "." and "..", cause they're not showing up.
 	return C.int(len(arr))
 }
 
@@ -114,7 +127,7 @@ func go_open(path *C.char, flags C.int) C.int {
 	res := getFD(pp)
 	if res > -1 {
 		//check if it's actually a file
-		fi, err := fs.Stat(pp)
+		fi, err := ns.Stat(pp)
 		if err != nil {
 			fmt.Println("Error go_open statin': ", path, " ", err)
 			return -1
@@ -137,7 +150,7 @@ func go_close(fd C.int) C.int {
 }
 
 func getStat(pp string, fd int, buf *C.go_statstruct) C.int {
-	fi, err := fs.Stat(pp)
+	fi, err := ns.Stat(pp)
 	if err != nil {
 		fmt.Println("Error stat: ", pp, " internal stat errored")
 		return -1
@@ -176,6 +189,19 @@ func go_lstat(path *C.char, buf *C.go_statstruct) C.int {
 	}
 }
 
+//export go_fchmod
+func go_fchmod(fd C.int, mode C.int) C.int {
+	gofd := int(fd)
+	pp, err := getPath(gofd)
+	if err == nil {
+		err = ns.Chmod(pp, os.FileMode(int(mode)))
+		if err == nil {
+			return 0
+		}
+	}
+	return -1
+}
+
 //export go_truncate
 func go_truncate(path *C.char, offset3 C.int) C.int {
 	pp := C.GoString(path)
@@ -190,7 +216,7 @@ func go_truncate(path *C.char, offset3 C.int) C.int {
 	for step = 0; err == nil; step++ {
 		switch step {
 		case 0:
-			file, err = fs.Open(pp)
+			file, err = ns.Open(pp)
 		case 1:
 			err = file.Truncate(off)
 		case 2:
@@ -207,7 +233,7 @@ func go_truncate(path *C.char, offset3 C.int) C.int {
 func go_rename(oldpath *C.char, newpath *C.char) C.int {
 	op := C.GoString(oldpath)
 	np := C.GoString(newpath)
-	err := fs.Rename(op, np)
+	err := ns.Rename(op, np)
 	if err != nil {
 		fmt.Println("Error on rename", op, " to ", np, " due to ", err)
 		return -1
@@ -220,7 +246,7 @@ func go_utime_helper(path *C.char, actime C.int, modtime C.int) C.int {
 	pp := C.GoString(path)
 	act := time.Unix(int64(actime), 0)
 	mod := time.Unix(int64(modtime), 0)
-	err := fs.Chtimes(pp, act, mod)
+	err := ns.Chtimes(pp, act, mod)
 	if err != nil {
 		fmt.Println("Error setting times:", pp, act, mod, err)
 		return -1
@@ -245,7 +271,7 @@ func go_ftruncate(fd C.int, offset3 C.int) C.int {
 		case 0:
 			pp, err = getPath(gofd)
 		case 1:
-			file, err = fs.OpenFile(pp, os.O_RDWR, 0644)
+			file, err = ns.OpenFile(pp, os.O_RDWR, 0644)
 		case 2:
 			err = file.Truncate(off)
 		case 3:
@@ -263,9 +289,9 @@ func go_ftruncate(fd C.int, offset3 C.int) C.int {
 //export go_open_create
 func go_open_create(pathname *C.char, flags C.int, mode C.int) C.int {
 	pp := C.GoString(pathname)
-	_, err := fs.OpenFile(pp, int(flags), os.FileMode(mode))
+	_, err := ns.Create(pp)
 	if err != nil {
-		fmt.Println("Error open_create file: ", pp, " due to: ", err)
+		fmt.Println("Error open_create file at create: ", pp, " due to: ", err)
 		return -1
 	}
 	return C.int(getFD(pp))
@@ -274,7 +300,7 @@ func go_open_create(pathname *C.char, flags C.int, mode C.int) C.int {
 //export go_remove
 func go_remove(path *C.char) C.int {
 	pp := C.GoString(path)
-	st, err := fs.Stat(pp)
+	st, err := ns.Stat(pp)
 
 	if err != nil {
 		fmt.Println("Error removing file: ", pp, "\n", err)
@@ -287,7 +313,7 @@ func go_remove(path *C.char) C.int {
 		return -1
 	}
 
-	err = fs.Remove(pp)
+	err = ns.Remove(pp)
 	if err != nil {
 		fmt.Println("Error removing file: ", pp, "\n", err)
 		return -1
@@ -299,7 +325,7 @@ func go_remove(path *C.char) C.int {
 func go_rmdir_helper(path *C.char) C.int {
 	pp := C.GoString(path)
 
-	st, err := fs.Stat(pp)
+	st, err := ns.Stat(pp)
 	
 	if err != nil {
 		fmt.Println("Error removing directory: ", pp, "\n", err)
@@ -312,7 +338,7 @@ func go_rmdir_helper(path *C.char) C.int {
 		return -1
 	}
 
-	err = fs.Remove(pp)
+	err = ns.Remove(pp)
 	if err != nil {
 		fmt.Println("Error removing directory: ", pp, "\n", err)
 		if strings.Contains(err.Error(), "directory not empty") {
@@ -326,7 +352,7 @@ func go_rmdir_helper(path *C.char) C.int {
 //export go_mkdir
 func go_mkdir(path *C.char, mode C.int) C.int {
 	pp := C.GoString(path)
-	err := fs.Mkdir(pp, os.FileMode(mode))
+	err := ns.Mkdir(pp, os.FileMode(mode))
 	if err != nil {
 		fmt.Println("Error making directory: ", pp, "\n", err)
 		return -1
@@ -364,7 +390,7 @@ func go_pwrite(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
 		case 0:
 			pp, err = getPath(gofd)
 		case 1:
-			file, err = fs.OpenFile(pp, os.O_RDWR, 0644)
+			file, err = ns.OpenFile(pp, os.O_RDWR, 0644)
 		case 2:
 			copiedBytes, err = file.WriteAt(cbuf, off)
 		case 3:
@@ -401,7 +427,7 @@ func go_pread(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
 		case 0:
 			pp, err = getPath(gofd)
 		case 1:
-			file, err = fs.Open(pp)
+			file, err = ns.Open(pp)
 		case 2:
 			copiedBytes, err = file.ReadAt(cbuf, off)
 		case 3:
@@ -431,12 +457,10 @@ func go_fsync(fd C.int) C.int {
 		case 0:
 			pp, err = getPath(gofd)
 		case 1:
-			file, err = fs.Open(pp)
+			file, err = ns.Open(pp)
 		case 2:
-			err = file.Sync()
-		case 3:
 			err = file.Close()
-		case 4:
+		case 3:
 			return 0
 		}
 	}

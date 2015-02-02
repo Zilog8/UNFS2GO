@@ -6,10 +6,11 @@ package vfs
 
 import (
 	"../afero"
+	"../minfs"
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"os" //os.FileInfo
 	pathpkg "path"
 	"sort"
 	"strings"
@@ -21,6 +22,10 @@ import (
 const debugNS = true
 
 var debugDB map[string]bool
+
+func New() NameSpace {
+	return make(NameSpace)
+}
 
 // A NameSpace is a file system made up of other file systems
 // mounted at specific locations in the name space.
@@ -103,7 +108,7 @@ type NameSpace map[string][]mountedFS
 // a prefix 'old' with 'new' and then calling the fs methods.
 type mountedFS struct {
 	old string
-	fs  afero.Fs
+	fs  minfs.MinFS
 	new string
 }
 
@@ -135,6 +140,10 @@ func (m mountedFS) translate(path string) string {
 }
 
 func (NameSpace) String() string {
+	return "ns"
+}
+
+func (NameSpace) Name() string {
 	return "ns"
 }
 
@@ -176,7 +185,7 @@ const (
 // but earlier ones are still consulted for paths that do not exist in newfs.
 // If mode is BindAfter, this redirection happens only after existing ones
 // have been tried and failed.
-func (ns NameSpace) Bind(old string, newfs afero.Fs, new string, mode BindMode) {
+func (ns NameSpace) Bind(old string, newfs minfs.MinFS, new string, mode BindMode) {
 	if debugDB == nil {
 		debugDB = map[string]bool{}
 	}
@@ -203,7 +212,7 @@ func (ns NameSpace) Bind(old string, newfs afero.Fs, new string, mode BindMode) 
 			if !hasPathPrefix(old, m.old) {
 				// This should not happen.  If it does, panic so
 				// that we can see the call trace that led to it.
-				panic(fmt.Sprintf("invalid Bind: old=%q m={%q, %s, %q}", old, m.old, m.fs.Name(), m.new))
+				panic(fmt.Sprintf("invalid Bind: old=%q m={%q, %s, %q}", old, m.old, m.fs.String(), m.new))
 			}
 			suffix := old[len(m.old):]
 			m.old = pathpkg.Join(m.old, suffix)
@@ -214,12 +223,12 @@ func (ns NameSpace) Bind(old string, newfs afero.Fs, new string, mode BindMode) 
 	ns[old] = mtpt
 }
 
-func (ns NameSpace) Remove(name string) error {
+func (ns NameSpace) RemoveAll(name string) error {
 	//TODO, verify that it's not a bind point
 	mFS := ns.resolve(name)
-	reterr := fmt.Sprintln("No suitable backend found for Remove: ", name)
+	reterr := fmt.Sprintln("No suitable backend found for RemoveAll: ", name)
 	for i, m := range mFS {
-		err := m.fs.Remove(m.translate(name))
+		err := m.fs.Remove(m.translate(name), true)
 		if err == nil {
 			return nil
 		} else {
@@ -229,12 +238,47 @@ func (ns NameSpace) Remove(name string) error {
 	return errors.New(reterr)
 }
 
+func (ns NameSpace) Remove(name string) error {
+	//TODO, verify that it's not a bind point
+	mFS := ns.resolve(name)
+	reterr := fmt.Sprintln("No suitable backend found for Remove: ", name)
+	for i, m := range mFS {
+		err := m.fs.Remove(m.translate(name), false)
+		if err == nil {
+			return nil
+		} else {
+			reterr = fmt.Sprintln(reterr, i, "- Failed at ", m, "due to ", err)
+		}
+	}
+	return errors.New(reterr)
+}
+
+//TODO: Implement correctly
+func (ns NameSpace) MkdirAll(path string, perm os.FileMode) error {
+	return errors.New("MkdirAll error: Not done yet")
+	/* mFS := ns.resolve(path)
+
+	reterr := fmt.Sprintln("No suitable backend found for MkdirAll: ", path)
+	for i, m := range mFS {
+		vpath := m.translate(path)
+		//Split vpath into folder names
+		//Check up to what level the folders exist
+		//Keep creating folders after that
+		if err == nil {
+			return nil
+		} else {
+			reterr = fmt.Sprintln(reterr, i, "- Failed at ", m, "due to ", err)
+		}
+	}
+	return errors.New(reterr) */
+}
+
 func (ns NameSpace) Mkdir(name string, perm os.FileMode) error {
 	mFS := ns.resolve(name)
 
 	reterr := fmt.Sprintln("No suitable backend found for Mkdir: ", name)
 	for i, m := range mFS {
-		err := m.fs.Mkdir(m.translate(name), perm)
+		err := m.fs.CreateDirectory(m.translate(name))
 		if err == nil {
 			return nil
 		} else {
@@ -263,7 +307,7 @@ func (ns NameSpace) Rename(oldpath string, newpath string) error {
 		return errors.New(fmt.Sprintln("No suitable backend found for Rename old path: ", oldpath))
 	}
 
-	return oldFS.fs.Rename(oldFS.translate(oldpath), oldFS.translate(newpath))
+	return oldFS.fs.Move(oldFS.translate(oldpath), oldFS.translate(newpath))
 	//TODO: Finish this function to handle all the edge cases: One fs to another, etc.
 
 	/*
@@ -283,7 +327,7 @@ func (ns NameSpace) OpenFile(name string, flag int, perm os.FileMode) (afero.Fil
 
 	reterr := fmt.Sprintln("No suitable backend found for OpenFile: ", name)
 	for i, m := range mFS {
-		f, err := m.fs.OpenFile(m.translate(name), flag, perm)
+		f, err := minfs.OpenFile(m.fs, m.translate(name), flag, perm)
 		if err == nil {
 			return f, nil
 		} else {
@@ -315,26 +359,50 @@ func (ns NameSpace) resolve(path string) []mountedFS {
 	return nil
 }
 
-func (ns NameSpace) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	FSa := ns.resolve(name)
+func (ns NameSpace) Chmod(name string, mode os.FileMode) error {
+	return errors.New("Chmod not supported at this time")
+}
 
-	for _, m := range FSa {
-		trueName := m.translate(name)
-		f, err := m.fs.Stat(trueName)
+func (ns NameSpace) Chtimes(name string, atime time.Time, mtime time.Time) error {
+	//FSa := ns.resolve(name)
+
+	//for _, m := range FSa {
+	//	trueName := m.translate(name)
+	//	f, err := m.fs.Stat(trueName)
+	//	if err == nil {
+	//		if int64(f.Mode().Perm()) >= 384 { // >= octal 600; Read&Write permission
+	//			return m.fs.Chtimes(trueName, atime, mtime)
+	//		}
+	//	}
+	//}
+	//return errors.New(fmt.Sprintln("No suitable backend found for Chtimes: ", name))
+	return errors.New("Chtimes not supported at this time (pun intended)")
+}
+
+func (ns NameSpace) Create(path string) (afero.File, error) {
+	var err error
+	for _, m := range ns.resolve(path) {
+		err1 := m.fs.CreateFile(m.translate(path))
+		if err1 == nil {
+			return minfs.OpenFile(m.fs, m.translate(path), 384, 600)
+		}
 		if err == nil {
-			if int64(f.Mode().Perm()) >= 384 { // >= octal 600; Read&Write permission
-				return m.fs.Chtimes(trueName, atime, mtime)
+			err = err1
 			}
 		}
+	if err == nil {
+		err = errors.New("No suitable backend found for Create " + path)
 	}
-	return errors.New(fmt.Sprintln("No suitable backend found for Chtimes: ", name))
+	return nil, err
 }
 
 // Open implements the afero.Fs Open method.
 func (ns NameSpace) Open(path string) (afero.File, error) {
+	//TODO: if Open is called on a directory, we should make a fake afero.File
+	//that will call ns.ReadDir or whatever if/when it gets read.
 	var err error
 	for _, m := range ns.resolve(path) {
-		r, err1 := m.fs.Open(m.translate(path))
+		r, err1 := minfs.Open(m.fs, m.translate(path))
 		if err1 == nil {
 			return r, nil
 		}
@@ -348,11 +416,10 @@ func (ns NameSpace) Open(path string) (afero.File, error) {
 	return nil, err
 }
 
-// stat implements the afero.Fs Stat method.
-func (ns NameSpace) stat(path string, f func(afero.Fs, string) (os.FileInfo, error)) (os.FileInfo, error) {
+func (ns NameSpace) Stat(path string) (os.FileInfo, error) {
 	var err error
 	for _, m := range ns.resolve(path) {
-		fi, err1 := f(m.fs, m.translate(path))
+		fi, err1 := m.fs.Stat(m.translate(path))
 		if err1 == nil {
 			return fi, nil
 		}
@@ -364,10 +431,6 @@ func (ns NameSpace) stat(path string, f func(afero.Fs, string) (os.FileInfo, err
 		err = &os.PathError{Op: "stat", Path: path, Err: os.ErrNotExist}
 	}
 	return nil, err
-}
-
-func (ns NameSpace) Stat(path string) (os.FileInfo, error) {
-	return ns.stat(path, afero.Fs.Stat)
 }
 
 // dirInfo is a trivial implementation of os.FileInfo for a directory.
@@ -409,7 +472,7 @@ func (ns NameSpace) ReadDir(path string) ([]os.FileInfo, error) {
 	)
 
 	for _, m := range ns.resolve(path) {
-		dir, err1 := afero.ReadDir(m.translate(path), m.fs)
+		dir, err1 := m.fs.ReadDirectory(m.translate(path), 0, -1)
 		if err1 != nil {
 			if err == nil {
 				err = err1
