@@ -93,28 +93,26 @@ func (f *osFS) ReadDirectory(name string, off int, maxn int) ([]os.FileInfo, err
 	return ttsa, err
 }
 
-//TODO: Implement correctly
 func (f *osFS) GetAttribute(path string, attribute string) (interface{}, error) {
 	realname := f.translate(path)
-	switch attribute {
-	case "ctime":
-		return time.Now(), nil
-	case "size":
 		fi, err := os.Stat(realname)
 		if err != nil {
-			return fi.Size(), nil
-		}
 		return nil, errors.New("GetAttribute Error Stat'n " + path + "(translated as " + realname + "):" + err.Error())
+	}
+	switch attribute {
+	case "modtime":
+		return fi.ModTime(), nil
+	case "size":
+		return fi.Size(), nil
 	}
 	return nil, errors.New("GetAttribute Error: Unsupported attribute " + attribute)
 }
 
-//TODO: Implement correctly
 func (f *osFS) SetAttribute(path string, attribute string, newvalue interface{}) error {
 	realname := f.translate(path)
 	switch attribute {
-	case "ctime":
-		return nil
+	case "modtime":
+		return os.Chtimes(realname, time.Now(), newvalue.(time.Time))
 	case "size":
 		return os.Truncate(realname, newvalue.(int64))
 	}

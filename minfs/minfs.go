@@ -4,7 +4,6 @@
 package minfs
 
 import (
-	"../afero"
 	"errors"
 	"fmt"
 	"os"
@@ -124,12 +123,4 @@ func (f minFile) Name() string {
 
 func (f minFile) Truncate(newSize int64) error {
 	return f.fs.SetAttribute(f.path, "size", newSize)
-}
-
-func OpenFile(fs MinFS, path string, flag int, perm os.FileMode) (afero.File, error) {
-	return minFile{fs, path, flag, perm, 0}, nil
-}
-
-func Open(fs MinFS, path string) (afero.File, error) {
-	return minFile{fs, path, 0, 0777, 0}, nil
 }

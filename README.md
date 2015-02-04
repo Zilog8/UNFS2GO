@@ -3,12 +3,7 @@ UNFS2GO
 My first "project" in CGO (and C for that matter);
 A fork of UNFS3 (Usermode NFS3 server) that uses Go backends.
 
-The Go backends are abstracted through the vfs.NameSpace package found in
-godoc. This permits multiple backends to be bound to the same virtual
-filesystem. Backends implement the afero.Fs interface, from the afero
-project, making it easier to swap between them, and for you to implement
-your own backends as well. The first implemented backend is zip files
-(read-only), using the "zipfs" package also from godoc.
+The Go backends are abstracted through the minfs.MinFS interface.
 
 Why:
 
@@ -19,10 +14,7 @@ I figured my best bet was to re-purposed a pre-existing NFS server.
 Since I couldn't find an NFS server in Go, I settled on UNFS3, a usermode 
 server written in C. Because of the simplicity of CGO, it actually wasn't
 too difficult to bring this gruesome chimera into existence (despite my
-utter lack of C knowledge). Around the same time, I was monkeying around
-with godoc's zipfs package and thought that it would make a perfect first
-use for UNFS2GO. Some time later, I found Afero and figured it'd fit in 
-great.
+utter lack of C knowledge).
 
 Build:
 
@@ -37,49 +29,28 @@ In debian:
 	sudo apt-get install rpcbind nfs-common
 	
 Usage:
-Arguments are given in multiples of 4; each quartet representing a binding:
+The first argument gives the bind type, with additional arguments
+determined by the individual bind type. 
 
-	1) bind type							Ex.:  -z
-	
-	2) 1st config							Ex.:  ./voynich_manuscript.zip
-	
-	3) 2nd config							Ex.:  /vman
-	
-	4) path to bind to in the NFS server	Ex.:  /voyzip
-	
-For example:
-
-	unfs2go -z ./voynich_manuscript.zip /vman /voyzip
-	
-You can add multiple quartets at a time:
-
-	unfs2go -z ./mydocs1.zip /docs /zip1 -z ./mydocs2.zip /docs2 /zip2
-	
-You can even place bindings inside other bindings:
-
-	unfs2go -z ./mydocs1.zip /docs /zip1 -z ./mydocs2.zip /docs2 /zip1/zip2
+	unfs2go -o ./sharedDir
 
 Backends:
 
-bind type  | 1st configuration | 2nd configuration | description
----------- | ----------------- | ----------------- | -----------
--z         | zipfile           | path/in/zip       | uses a zip file's contents. Read only.
--o         | ignored           | path/in/fs        | shares a system path. Full access.
+bind type  | 1st configuration | description
+---------- | ----------------- | -----------
+-o         | sharedDir         | shares a system path.
 
 Mounting:
 
 Mount the NFS path as you would normally. For the first example:
 
-	mount 127.0.0.1:/voyzip /mnt/point
+	mount 127.0.0.1:/ /mnt/point
 
 Limitations:
 
 This is a horrible hack by a someone who doesn't know much Go and knows even less C.
 Thus there are obviously some limitations, most of which are probably unknown.
 Of the known:
-
--There seems to be a limitation to zipfs that prevents binding the "root"
-directory of a zip file. For now, only non-root directories can be bound.
 
 -In some (many? most?) systems, the server fails at start with an error along the
 lines of "RPC: Authentication error; why = Client credential too weak". It's some
@@ -88,23 +59,21 @@ this. So far, the only solutions I've found are running unfs2go as root/sudo or
 running rpcbind in insecure mode (-i). If anyone has any further information, I'd
 greatly appreciate it.
 
-License Stuff:
+Development:
+You can develop your own backends if you want (If you make anything interesting,
+let me know. I'll probably include it into main). Backends are based on the minfs.MinFS
+interface. minfs.MinFS is a filesystem abstraction inspired by the afero.Fs interface,
+(from the afero project https://github.com/spf13/afero ), as well as the vfs.FileSystem
+interface (from golang's tool godoc https://go.googlesource.com/tools/+/master/godoc/vfs ).
+However, minfs.MinFS attempts to be more succinct and faster to develop for than
+afero.Fs, while being more full-featured than vfs.FileSystem. As a result, it's
+not as much a drop-in-replacement for other programs besides unfs2go.
 
-In the "afero" folder you'll find the code that's been re-purposed from spf13's
-afero project ( https://github.com/spf13/afero ), as well as the LICENSE file
-for that code.
+License Stuff:
 
 In the "unfs3" folder you'll find the code that's been re-purposed from the UNFS3
 project ( http://unfs3.sourceforge.net/ ), as well as the CREDITS and LICENSE files
 for that code.
-
-In the "vfs" folder you'll find the code that's been re-purposed from the godoc
-tool (https://go.googlesource.com/tools/+/master/godoc/vfs), as well as the AUTHORS,
-LICENSE, etc. files for that code.
-
-Also, you'll find here a .zip file ("voynich_manuscript.zip"), a thumbnail copy of
-the Voynich Manuscript gotten from Archive.org, just for testing purposes. That is
-a Public Domain work.
 
 As for my paltry code and modifications:
 
