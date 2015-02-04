@@ -9,6 +9,7 @@ import "C"
 import (
 	"./minfs"
 	"./osfs"
+	"./zipfs"
 	"errors"
 	"fmt"
 "os"
@@ -31,8 +32,8 @@ func main() {
 
 func parseArgs(args []string) (minfs.MinFS, error) {
 	switch args[0] {
-	//case "-z":
-	//	return zipfsPrep(args[1:])
+	case "-z":
+		return zipfsPrep(args[1:])
 	case "-o":
 		return osfsPrep(args[1:])
 	default:
@@ -42,4 +43,8 @@ func parseArgs(args []string) (minfs.MinFS, error) {
 
 func osfsPrep(args []string) (minfs.MinFS, error) {
 	return osfs.New(args[0])
+}
+
+func zipfsPrep(args []string) (minfs.MinFS, error) {
+	return zipfs.New(args[0])
 }

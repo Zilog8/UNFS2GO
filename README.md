@@ -36,9 +36,10 @@ determined by the individual bind type.
 
 Backends:
 
-bind type  | 1st configuration | description
+bind type  | configuration     | description
 ---------- | ----------------- | -----------
 -o         | sharedDir         | shares a system path.
+-z         | zipfile           | uses a zip file's contents. Read only.
 
 Mounting:
 
@@ -75,6 +76,10 @@ License Stuff:
 In the "unfs3" folder you'll find the code that's been re-purposed from the UNFS3
 project ( http://unfs3.sourceforge.net/ ), as well as the CREDITS and LICENSE files
 for that code.
+
+In the "zipfs" folder you'll find the code that's been re-purposed from the godoc
+tool (https://go.googlesource.com/tools/+/master/godoc/vfs), as well as the AUTHORS,
+LICENSE, etc. files for that code.
 
 As for my paltry code and modifications:
 
