@@ -117,6 +117,11 @@ func getStat(pp string, fd int, buf *C.go_statstruct) C.int {
 	buf.st_ino = C.uint64(fd)
 	buf.st_gen = C.uint32(fd)
 	buf.st_size = C.uint64(fi.Size())
+	buf.st_atime = C.time_t(time.Now().Unix())
+	buf.st_mtime = C.time_t(fi.ModTime().Unix())
+	buf.st_ctime = C.time_t(fi.ModTime().Unix())
+	
+	// buf.st_atime;  buf.st_mtime; buf.st_ctime;
 	if fi.IsDir() {
 		buf.st_mode = C.short(fi.Mode() | C.S_IFDIR)
 	} else {
