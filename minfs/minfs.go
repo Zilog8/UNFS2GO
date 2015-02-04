@@ -23,6 +23,7 @@ type MinFS interface {
 	SetAttribute(path string, attribute string, newvalue interface{}) error
 }
 
+// minFile isn't actually used in unfs2go, but it's got some code that might be useful so I'll just leave it here.
 type minFile struct {
 	fs         MinFS  //Filesystem it's in
 	path       string //path being referred to
