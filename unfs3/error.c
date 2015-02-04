@@ -216,10 +216,13 @@ nfsstat3 remove_err(void)
 
 nfsstat3 rmdir_err(void)
 {
-    if (errno == ENOTEMPTY)
+    if (errno == ENOTEMPTY) {
+		//fprintf(stderr, "rmdir error failed, returned err_notempty\n");
 	return NFS3ERR_NOTEMPTY;
-    else
+	} else {
+		//fprintf(stderr, "rmdir error failed, returned remove_err\n");
 	return remove_err();
+	}
 }
 
 nfsstat3 setattr_err(void)

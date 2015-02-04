@@ -434,29 +434,14 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 
     /* Try to open the file */
     if (result.status == NFS3_OK) {
-	if (argp->how.mode != EXCLUSIVE) {
-	    fd = backend_open_create(obj, flags, create_mode(new_attr));
-	} else {
 	    fd = backend_open_create(obj, flags, create_mode(new_attr));
 	}
-    }
 
     if (fd != -1) {
-	/* Successful open */
+	//fprintf(stderr,  "Successful open\n");
 	res = backend_fstat(fd, &buf);
 	if (res != -1) {
-	    /* Successful stat */
-	    if (argp->how.mode == EXCLUSIVE) {
-		/* Save verifier in atime and mtime */
-		res =
-		    backend_store_create_verifier(obj,
-						  argp->how.createhow3_u.
-						  verf);
-	    }
-	}
-
-	if (res != -1) {
-	    /* So far, so good */
+	//fprintf(stderr,  "Successful stat\n");
 	    gen = backend_get_gen(buf, fd, obj);
 	    fh_cache_add(buf.st_dev, buf.st_ino, obj);
 	    backend_close(fd);
@@ -465,18 +450,18 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 		fh_extend_post(argp->where.dir, buf.st_dev, buf.st_ino, gen);
 	    result.CREATE3res_u.resok.obj_attributes =
 		get_post_buf(buf, rqstp);
-	}
-
-	if (res == -1) {
-	    /* backend_fstat() or backend_store_create_verifier() failed */
+	} else {
+	//fprintf(stderr,  "backend_fstat() or backend_store_create_verifier() failed\n");
 	    backend_close(fd);
 	    result.status = NFS3ERR_IO;
 	}
 
     } else if (result.status == NFS3_OK) {
-	/* open() failed */
+	
+	//fprintf(stderr,  "open() failed\n");
 	if (argp->how.mode == EXCLUSIVE && errno == EEXIST) {
-	    /* Check if verifier matches */
+	    
+	//fprintf(stderr,  "Check if verifier matches\n");
 	    fd = backend_open(obj, O_NONBLOCK);
 	    if (fd != -1) {
 		res = backend_fstat(fd, &buf);
@@ -485,7 +470,7 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 	    if (res != -1) {
 		if (backend_check_create_verifier
 		    (&buf, argp->how.createhow3_u.verf)) {
-		    /* The verifier matched. Return success */
+	//fprintf(stderr,  "The verifier matched. Return success\n");
 		    gen = backend_get_gen(buf, fd, obj);
 		    fh_cache_add(buf.st_dev, buf.st_ino, obj);
 		    backend_close(fd);
@@ -496,7 +481,7 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 		    result.CREATE3res_u.resok.obj_attributes =
 			get_post_buf(buf, rqstp);
 		} else {
-		    /* The verifier doesn't match */
+	//fprintf(stderr,  "The verifier doesn't match\n");
 		    result.status = NFS3ERR_EXIST;
 		}
 	    }
@@ -506,7 +491,7 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 	}
     }
 
-    /* overlaps with resfail */
+	//fprintf(stderr,  "overlaps with resfail\n");
     result.CREATE3res_u.resok.dir_wcc.before = get_pre_cached();
     result.CREATE3res_u.resok.dir_wcc.after = get_post_stat(path, rqstp);
 
@@ -753,7 +738,7 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
     if (result.status == NFS3_OK) {
         change_readdir_cookie();
 	res = backend_rmdir(obj);
-	if (res == -1)
+	if (res < 0)
 	    result.status = rmdir_err();
     }
 

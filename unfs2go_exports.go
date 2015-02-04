@@ -4,102 +4,77 @@ package main
 //#include "unfs3/daemon.h"
 import "C"
 import (
-	"./vfs"
-	"container/list"
+	"./minfs"
+	"errors"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"reflect"
 	"strings"
+	"time"
 	"unsafe"
 )
 
-//Paths are stored here, at index == filedescriptor - 100
-var Pathlist *list.List
+var PathMapA map[string]int
+var PathMapB map[int]string
+var FDcounter int
 
-var fs vfs.NameSpace //virtual filesystem that will house the backends
+var ns minfs.MinFS //filesystem being shared
 
 //export go_init
 func go_init() C.int {
-	Pathlist = list.New()
+	PathMapA = make(map[string]int)
+	PathMapB = make(map[int]string)
+	FDcounter = 100
 	return 0
 }
 
-func getPath(fd int) string {
+func getPath(fd int) (string, error) {
 	if fd < 100 {
-		fmt.Println("Error getPath, filedescriptor too low ", fd)
-		return ""
+		return "", errors.New(fmt.Sprint("Error getPath, filedescriptor too low ", fd))
 	}
-	i := 100
-	e := Pathlist.Front()
-	for {
-		if e != nil {
-			if i == fd {
-				return e.Value.(string)
+	path := PathMapB[fd]
+	if path != "" {
+		return path, nil
 			} else {
-				i++
-				e = e.Next()
-			}
-		} else {
-			fmt.Println("Error getPath, filedescriptor too large ", fd)
-			return ""
-		}
+		return "", errors.New(fmt.Sprint("Error getPath, filedescriptor not found ", fd))
 	}
 }
 
 func getFD(path string) int {
-	i := 100
-	//check if already exists
-	for e := Pathlist.Front(); e != nil; e = e.Next() {
-		if strings.EqualFold(path, e.Value.(string)) {
+	i := PathMapA[path]
+	if i != 0 {
 			return i
 		}
-		i++
-	}
-
-	//ok, check the filesystem for path existance
-	_, err := fs.Stat(path)
-	if err != nil {
-		fmt.Println("Error getFD statin': ", path, " ", err)
-		return -1
-	}
-
-	//Add it to list and return filedescriptor
-	Pathlist.PushBack(path)
-	return i
+	FDcounter++
+	PathMapA[path] = FDcounter
+	PathMapB[FDcounter] = path
+	return FDcounter
 }
 
 //export go_readdir_helper
 func go_readdir_helper(dirpath *C.char, entryIndex C.int) *C.char {
+
 	pp := C.GoString(dirpath)
-	arr, err := fs.ReadDir(pp)
-	if err != nil {
-		fmt.Println("Error go_readdir_helper ", pp, " ", err)
-		return C.CString("")
-	}
 	index := int(entryIndex)
-	if index >= len(arr) {
-		fmt.Println("Error go_readdir_helper ", pp, " index out of bounds")
+	arr, err := ns.ReadDirectory(pp, index, 1)
+
+	if err != nil {
+		fmt.Println("Error go_readdir_helper path=", pp, "index=", index, "error=", err)
 		return C.CString("")
 	}
 
-	return C.CString(arr[index].Name())
+	return C.CString(arr[0].Name())
 }
 
 //export go_opendir_helper
 func go_opendir_helper(path *C.char) C.int {
-	//Return -1 if error; else num of entries
 	pp := C.GoString(path)
-	fi, err := fs.Stat(pp)
-	if err != nil || !fi.IsDir() {
-		fmt.Println("Error go_opendir_helper ", pp)
-		return -1
-	}
-	arr, err := fs.ReadDir(pp)
-	if err != nil {
-		fmt.Println("Error go_opendir_helper ", pp, " ", err)
-		return -1
-	}
+	arr, err := ns.ReadDirectory(pp, 0, -1)
 
+	if err != nil {
+		fmt.Println("Error go_opendir_helper path=", pp, "error=", err)
+		return -1
+	}
 	return C.int(len(arr))
 }
 
@@ -111,13 +86,13 @@ func go_open(path *C.char, flags C.int) C.int {
 	res := getFD(pp)
 	if res > -1 {
 		//check if it's actually a file
-		fi, err := fs.Stat(pp)
+		fi, err := ns.Stat(pp)
 		if err != nil {
-			fmt.Println("Error go_open statin': ", path, " ", err)
+			//fmt.Println("Error go_open statin': ", path, " ", err)
 			return -1
 		}
 		if fi.IsDir() {
-			fmt.Println("Error go_open: ", pp, " is a directory.")
+			//fmt.Println("Error go_open: ", pp, " is a directory.")
 			return -1
 		} else {
 			return C.int(res)
@@ -129,20 +104,24 @@ func go_open(path *C.char, flags C.int) C.int {
 
 //export go_close
 func go_close(fd C.int) C.int {
-	//current architecture makes close unnecessary
 	return C.int(0)
 }
 
 func getStat(pp string, fd int, buf *C.go_statstruct) C.int {
-	fi, err := fs.Stat(pp)
+	fi, err := ns.Stat(pp)
 	if err != nil {
-		fmt.Println("Error stat: ", pp, " internal stat errored")
+		//fmt.Println("Error stat: ", pp, " internal stat errored. File/Directory probably doesn't exist")
 		return -1
 	}
 	buf.st_dev = C.uint32(1)
 	buf.st_ino = C.uint64(fd)
 	buf.st_gen = C.uint32(fd)
 	buf.st_size = C.uint64(fi.Size())
+	buf.st_atime = C.time_t(time.Now().Unix())
+	buf.st_mtime = C.time_t(fi.ModTime().Unix())
+	buf.st_ctime = C.time_t(fi.ModTime().Unix())
+	
+	// buf.st_atime;  buf.st_mtime; buf.st_ctime;
 	if fi.IsDir() {
 		buf.st_mode = C.short(fi.Mode() | C.S_IFDIR)
 	} else {
@@ -154,8 +133,8 @@ func getStat(pp string, fd int, buf *C.go_statstruct) C.int {
 //export go_fstat
 func go_fstat(fd C.int, buf *C.go_statstruct) C.int {
 	gofd := int(fd)
-	pp := getPath(gofd)
-	if len(pp) != 0 {
+	pp, err := getPath(gofd)
+	if err == nil {
 		return getStat(pp, gofd, buf)
 	} else {
 		return -1
@@ -173,36 +152,220 @@ func go_lstat(path *C.char, buf *C.go_statstruct) C.int {
 	}
 }
 
+//export go_fchmod
+func go_fchmod(fd C.int, mode C.int) C.int {
+	gofd := int(fd)
+	pp, err := getPath(gofd)
+	if err == nil {
+		err = ns.SetAttribute(pp, "mode", os.FileMode(int(mode)))
+		if err == nil {
+			return 0
+		}
+	}
+	return -1
+}
+
+//export go_truncate
+func go_truncate(path *C.char, offset3 C.int) C.int {
+	pp := C.GoString(path)
+	off := int64(offset3)
+	err := ns.SetAttribute(pp, "size", off)
+	if err != nil {
+		fmt.Println("Error on truncate of", pp, "(size =", off, ")", err)
+	return -1
+}
+	return 0
+}
+
+//export go_rename
+func go_rename(oldpath *C.char, newpath *C.char) C.int {
+	op := C.GoString(oldpath)
+	np := C.GoString(newpath)
+	err := ns.Move(op, np)
+	if err != nil {
+		fmt.Println("Error on rename", op, " to ", np, " due to ", err)
+		return -1
+	}
+	return 0
+}
+
+//export go_utime_helper
+func go_utime_helper(path *C.char, actime C.int, modtime C.int) C.int {
+	pp := C.GoString(path)
+	mod := time.Unix(int64(modtime), 0)
+	err := ns.SetAttribute(pp, "modtime", mod)
+	if err != nil {
+		fmt.Println("Error setting times:", pp, mod, err)
+		return -1
+	}
+	return 0
+}
+
+//export go_ftruncate
+func go_ftruncate(fd C.int, offset3 C.int) C.int {
+	gofd := int(fd)
+	off := int64(offset3)
+	pp, err := getPath(gofd)
+	if err != nil {
+		fmt.Println("Error on ftruncate of (fd=", fd, "size =", off, ")", err)
+		return -1
+	}
+	err = ns.SetAttribute(pp, "size", off)
+	if err != nil {
+		fmt.Println("Error on ftruncate of", pp, "(fd=", fd, "size =", off, ")", err)
+	return -1
+}
+	return 0
+}
+
+//export go_open_create
+func go_open_create(pathname *C.char, flags C.int, mode C.int) C.int {
+	pp := C.GoString(pathname)
+	err := ns.CreateFile(pp)
+	if err != nil {
+		fmt.Println("Error open_create file at create: ", pp, " due to: ", err)
+		return -1
+	}
+	return C.int(getFD(pp))
+}
+
+//export go_remove
+func go_remove(path *C.char) C.int {
+	pp := C.GoString(path)
+	st, err := ns.Stat(pp)
+
+	if err != nil {
+		fmt.Println("Error removing file: ", pp, "\n", err)
+		return -1
+	}
+
+	//it seems most shells already check for this, but no harm being extra careful.
+	if st.IsDir() {
+		fmt.Println("Error removing file: ", pp, "\n Is a directory.")
+		return -1
+	}
+
+	err = ns.Remove(pp, false)
+	if err != nil {
+		fmt.Println("Error removing file: ", pp, "\n", err)
+		return -1
+	}
+	return 0
+}
+
+//export go_rmdir_helper
+func go_rmdir_helper(path *C.char) C.int {
+	pp := C.GoString(path)
+
+	st, err := ns.Stat(pp)
+	
+	if err != nil {
+		//fmt.Println("Error removing directory: ", pp, "\n", err)
+		return -1
+	}
+
+	//it seems most shells already check for this, but no harm being extra careful.
+	if !st.IsDir() {
+		//fmt.Println("Error removing directory: ", pp, "\n Not a directory.")
+		return -1
+	}
+
+	err = ns.Remove(pp, false)
+	if err != nil {
+		//fmt.Println("Error removing directory: ", pp, "\n", err)
+		if strings.Contains(err.Error(), "directory not empty") {
+			return -2
+		}
+		return -1
+	}
+	return 0
+}
+
+//export go_mkdir
+func go_mkdir(path *C.char, mode C.int) C.int {
+	pp := C.GoString(path)
+	err := ns.CreateDirectory(pp)
+	if err != nil {
+		fmt.Println("Error making directory: ", pp, "\n", err)
+		return -1
+	}
+	return 0
+	}
+
+//export go_nop
+func go_nop(name *C.char) C.int {
+	pp := C.GoString(name)
+	fmt.Println("Unsupported Command: ", pp)
+		return -1
+	}
+
+//export go_pwrite
+func go_pwrite(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
+	gofd := int(fd)
+	off := int64(offset)
+	counted := int(count)
+
+	//prepare the provided buffer for use
+	slice := &reflect.SliceHeader{Data: uintptr(buf), Len: counted, Cap: counted}
+	cbuf := *(*[]byte)(unsafe.Pointer(slice))
+
+	var (
+		pp          string
+		copiedBytes int
+		err         error
+	)
+			pp, err = getPath(gofd)
+	if err != nil {
+		fmt.Println("Error on pwrite (getPath of fd =", gofd, ");", err)
+		return -1
+	}
+	copiedBytes, err = ns.WriteFile(pp, cbuf, off)
+	if err != nil {
+		fmt.Println("Error on pwrite of", pp, "(fd =", gofd,
+		") (start =", off, " count =", counted, ")", err)
+	return -1
+}
+	return C.int(copiedBytes)
+
+}
+
 //export go_pread
 func go_pread(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
 	gofd := int(fd)
-	pp := getPath(gofd)
-	file, err := fs.Open(pp)
-	if err != nil {
-		fmt.Println("Error on pread ", pp, " (fd = ", gofd, ") ", err)
-		return -1
-	}
-	
-	//TODO: fix this
-	//seek doesn't work on the zip file,
-	//so just dump it all and excise what's needed
-	byt, err := ioutil.ReadAll(file)
-	if err != nil {
-		fmt.Println("Error on pread ", pp)
-	}
-
-	off := int(offset)
-	if len(byt) <= off {
-		//file's too small for offset requested
-		return -1
-	}
+	off := int64(offset)
+	counted := int(count)
 
 	//prepare the provided buffer for use
-	slice := &reflect.SliceHeader{Data: uintptr(buf), Len: int(count), Cap: int(count)}
+	slice := &reflect.SliceHeader{Data: uintptr(buf), Len: counted, Cap: counted}
 	cbuf := *(*[]byte)(unsafe.Pointer(slice))
 
-	copiedBytes := copy(cbuf, byt[off:])
-
-	file.Close()
+	var (
+		pp          string
+		copiedBytes int
+		err         error
+	)
+			pp, err = getPath(gofd)
+	if err != nil {
+		fmt.Println("Error on pread (getPath of fd =", gofd, ");", err)
+		return -1
+	}
+	copiedBytes, err = ns.ReadFile(pp, cbuf, off)
+	if err != nil && !strings.Contains(err.Error(), "EOF") {
+		fmt.Println("Error on pread of", pp, "(fd =", gofd,
+		") (start =", off, " count =", counted, ")", err)
+	return -1
+}
 	return C.int(copiedBytes)
+}
+
+//export go_fsync
+func go_fsync(fd C.int) C.int {
+	gofd := int(fd)
+
+	_, err := getPath(gofd)
+	if err != nil {
+		fmt.Println("Error on fsync (fd =", gofd, ");", err)
+	return -1
+	}
+	return 0
 }
