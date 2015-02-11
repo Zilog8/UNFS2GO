@@ -70,27 +70,14 @@ func (f *osFS) Remove(name string, recursive bool) error {
 	return os.Remove(realname)
 }
 
-func (f *osFS) ReadDirectory(name string, off int, maxn int) ([]os.FileInfo, error) {
+func (f *osFS) ReadDirectory(name string) ([]os.FileInfo, error) {
 	realname := f.translate(name)
 	fh, err := os.Open(realname)
-	ttsa := []os.FileInfo{}
-
 	if err != nil {
-		return ttsa, err
+		return []os.FileInfo{}, err
 	}
 	defer fh.Close()
-
-	var tsa []os.FileInfo
-	if maxn > 0 {
-		tsa, err = fh.Readdir(maxn + off)
-	} else {
-		tsa, err = fh.Readdir(0)
-	}
-	if len(tsa) > off {
-		return tsa[off:], err
-	}
-
-	return ttsa, err
+	return fh.Readdir(0)
 }
 
 func (f *osFS) GetAttribute(path string, attribute string) (interface{}, error) {

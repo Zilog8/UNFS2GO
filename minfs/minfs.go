@@ -14,7 +14,7 @@ type MinFS interface {
 	WriteFile(name string, b []byte, off int64) (int, error)
 	ReadFile(name string, b []byte, off int64) (int, error)
 	CreateDirectory(name string) error
-	ReadDirectory(name string, off int, maxn int) ([]os.FileInfo, error)
+	ReadDirectory(name string) ([]os.FileInfo, error) //No "." or ".." entries allowed
 	Move(oldpath string, newpath string) error
 	Remove(name string, recursive bool) error
 	Stat(name string) (os.FileInfo, error)
@@ -106,14 +106,15 @@ func (f minFile) Sync() error {
 }
 
 func (f minFile) Readdir(count int) ([]os.FileInfo, error) {
-	return f.fs.ReadDirectory(f.path, 0, count)
+	ta, err := f.fs.ReadDirectory(f.path)
+	return ta[:count], err
 }
 
 func (f minFile) Readdirnames(count int) ([]string, error) {
-	ta, err := f.fs.ReadDirectory(f.path, 0, count)
-	retVal := make([]string, len(ta))
-	for i, entry := range ta {
-		retVal[i] = entry.Name()
+	ta, err := f.fs.ReadDirectory(f.path)
+	retVal := make([]string, count)
+	for i, _ := range retVal {
+		retVal[i] = ta[i].Name()
 	}
 	return retVal, err
 }

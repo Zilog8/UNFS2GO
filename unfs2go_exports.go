@@ -56,20 +56,23 @@ func go_readdir_helper(dirpath *C.char, entryIndex C.int) *C.char {
 
 	pp := C.GoString(dirpath)
 	index := int(entryIndex)
-	arr, err := ns.ReadDirectory(pp, index, 1)
+	arr, err := ns.ReadDirectory(pp)
 
 	if err != nil {
 		fmt.Println("Error go_readdir_helper path=", pp, "index=", index, "error=", err)
 		return C.CString("")
 	}
-
-	return C.CString(arr[0].Name())
+	if index >= len(arr) {
+		fmt.Println("Error go_readdir_helper path=", pp, "index=", index, "error=", "index too high for directory contents")
+		return C.CString("")
+	}
+	return C.CString(arr[index].Name())
 }
 
 //export go_opendir_helper
 func go_opendir_helper(path *C.char) C.int {
 	pp := C.GoString(path)
-	arr, err := ns.ReadDirectory(pp, 0, -1)
+	arr, err := ns.ReadDirectory(pp)
 
 	if err != nil {
 		fmt.Println("Error go_opendir_helper path=", pp, "error=", err)
@@ -121,7 +124,6 @@ func getStat(pp string, fd int, buf *C.go_statstruct) C.int {
 	buf.st_mtime = C.time_t(fi.ModTime().Unix())
 	buf.st_ctime = C.time_t(fi.ModTime().Unix())
 	
-	// buf.st_atime;  buf.st_mtime; buf.st_ctime;
 	if fi.IsDir() {
 		buf.st_mode = C.short(fi.Mode() | C.S_IFDIR)
 	} else {

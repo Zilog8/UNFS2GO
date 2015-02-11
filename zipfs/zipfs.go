@@ -103,7 +103,7 @@ func (fs *zipFS) stat(abspath string) (int, zipFI, error) {
 	return i, zipFI{name, file}, nil
 }
 
-func (fs *zipFS) ReadDir(abspath string) ([]os.FileInfo, error) {
+func (fs *zipFS) readDir(abspath string) ([]os.FileInfo, error) {
 	path := zipPath(abspath)
 	i, fi, err := fs.stat(path)
 	if err != nil {
@@ -237,21 +237,8 @@ func (fs *zipFS) CreateDirectory(name string) error {
 	return os.ErrPermission
 }
 
-func (fs *zipFS) ReadDirectory(name string, off int, maxn int) ([]os.FileInfo, error) {
-	arr, err := fs.ReadDir(name)
-
-	if err != nil {
-		return []os.FileInfo{}, err
-	}
-	if len(arr) < off {
-		return []os.FileInfo{}, errors.New(fmt.Sprint("Reading directory", name, "out of range (", off, "of", len(arr), ")"))
-	}
-	arr = arr[off:]
-	if maxn > 0 && len(arr) > maxn {
-		arr = arr[:maxn]
-	}
-
-	return arr, nil
+func (fs *zipFS) ReadDirectory(name string) ([]os.FileInfo, error) {
+	return fs.readDir(name)
 }
 
 func (fs *zipFS) Move(oldpath string, newpath string) error {
