@@ -34,10 +34,17 @@ determined by the individual bind type.
 
 	unfs2go -o ./sharedDir
 
+If you want to use the shimFS (acts as a cache-ing layer for another
+backend. Might be useful for network filesystems) it has to be the first
+argument:
+
+	unfs2go -s -z ./zipfile.zip
+	
 Backends:
 
 bind type  | configuration     | description
 ---------- | ----------------- | -----------
+-s         |                   | acts as a cache-ing layer for another backend
 -o         | sharedDir         | shares a system path.
 -z         | zipfile           | uses a zip file's contents. Read only.
 

@@ -9,11 +9,14 @@ import "C"
 import (
 	"./minfs"
 	"./osfs"
+	"./shimfs"
 	"./zipfs"
 	"errors"
 	"fmt"
 "os"
 )
+
+var ns minfs.MinFS //filesystem being shared
 
 func main() {
 
@@ -36,6 +39,8 @@ func parseArgs(args []string) (minfs.MinFS, error) {
 		return zipfsPrep(args[1:])
 	case "-o":
 		return osfsPrep(args[1:])
+	case "-s":
+		return shimfsPrep(args[1:])
 	default:
 		return nil, errors.New("Not a recognized argument: " + args[0])
 	}
@@ -47,4 +52,12 @@ func osfsPrep(args []string) (minfs.MinFS, error) {
 
 func zipfsPrep(args []string) (minfs.MinFS, error) {
 	return zipfs.New(args[0])
+}
+
+func shimfsPrep(args []string) (minfs.MinFS, error) {
+	sub, err := parseArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	return shimfs.New("", 0, sub)
 }
