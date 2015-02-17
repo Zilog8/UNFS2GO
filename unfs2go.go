@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 "os"
+	"strconv"
 )
 
 var ns minfs.MinFS //filesystem being shared
@@ -55,9 +56,15 @@ func zipfsPrep(args []string) (minfs.MinFS, error) {
 }
 
 func shimfsPrep(args []string) (minfs.MinFS, error) {
-	sub, err := parseArgs(args)
+	tempFolder := args[0]
+	cacheSize, err := strconv.Atoi(args[1])
 	if err != nil {
 		return nil, err
 	}
-	return shimfs.New("", 0, sub)
+
+	sub, err := parseArgs(args[2:])
+	if err != nil {
+		return nil, err
+	}
+	return shimfs.New(tempFolder, int64(cacheSize*1024*1024), sub)
 }
