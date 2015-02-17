@@ -244,10 +244,16 @@ func (f *shimFI) write(deets swath, isSynced bool) *fileChunk {
 
 //Cleans up if this file is being deleted
 func (f *shimFI) delete() error {
+	var retVal error
 	f.fileLock.Lock()
+	if f.isdir {
+		if f.diritems == nil { //file already deleted
+			retVal = os.ErrNotExist
+		}
+		f.diritems = nil
+	} else {
 	if f.writechunks == nil { //file already deleted
-		f.fileLock.Unlock()
-		return os.ErrNotExist
+			retVal = os.ErrNotExist
 	}
 	for _, chunk := range f.writechunks {
 		chunk.chunkLock.Lock()
@@ -261,8 +267,9 @@ func (f *shimFI) delete() error {
 		chunk.chunkLock.Unlock()
 	}
 	f.cachechunks = nil
+	}
 	f.fileLock.Unlock()
-	return nil
+	return retVal
 }
 
 //Complying with os.FileSystem

@@ -6,6 +6,7 @@ import (
 	//"fmt"
 	"os"
 	"path"
+	"strings"
 	"sync"
 	"time"
 )
@@ -181,16 +182,34 @@ func (f *shimFS) Move(oldpath string, newpath string) error {
 }
 
 func (f *shimFS) Remove(name string, recursive bool) error {
-	//fmt.Println("shim passed through a remove")
 	file, err := f.interStat(name)
+	if err != nil {
+		return err
+	}
+	err = f.mfs.Remove(name, recursive)
 	if err != nil {
 		return err
 	}
 	f.filecacheLock.Lock()
 	delete(f.filecache, file.path())
+
+	if file.IsDir() && recursive {
+		dirpath := file.path()
+		if !strings.HasSuffix(dirpath, "/") {
+			dirpath += "/"
+		}
+
+		for path, sfi := range f.filecache {
+			if strings.HasPrefix(path, dirpath) {
+				delete(f.filecache, path)
+				sfi.delete()
+			}
+		}
+	}
 	f.filecacheLock.Unlock()
+
 	file.delete()
-	return f.mfs.Remove(name, recursive)
+	return nil
 }
 
 func (f *shimFS) ReadDirectory(dirpath string) ([]os.FileInfo, error) {
