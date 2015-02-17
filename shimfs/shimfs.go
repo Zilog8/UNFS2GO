@@ -3,7 +3,7 @@ package shimfs
 import (
 	"../minfs"
 	"errors"
-	"fmt"
+	//"fmt"
 	"os"
 	"path"
 	"sync"
@@ -120,6 +120,9 @@ func (f *shimFS) ReadFile(name string, b []byte, off int64) (int, error) {
 
 	unfulfilled, bytesFromCache := file.read(swath{off, b[0:len(b)]})
 
+	if unfulfilled == nil { //file was recently deleted
+		return 0, os.ErrNotExist
+	}
 	if bytesFromCache > 0 {
 		//fmt.Println("Saved", bytesFromCache, "bytes by switching to shimfs!")
 	}
@@ -127,10 +130,6 @@ func (f *shimFS) ReadFile(name string, b []byte, off int64) (int, error) {
 	//Any swaths left to fullfill gets served from the source
 	bytesFromSource := 0
 	for _, job := range unfulfilled {
-		if len(job.array) == 0 {
-			fmt.Println("Still getting empties")
-		} else {
-			//fmt.Println("shim passed through a read", file.fullpath, "at", job.off, "for", len(job.array))
 			nread, errread := f.mfs.ReadFile(file.path(), job.array, job.off)
 			if errread != nil {
 				err = errread
@@ -140,7 +139,6 @@ func (f *shimFS) ReadFile(name string, b []byte, off int64) (int, error) {
 				file.cache(swath{off: job.off, array: job.array[:nread]})
 			}
 		}
-	}
 
 	return int(bytesFromCache) + bytesFromSource, err
 }
@@ -160,7 +158,10 @@ func (f *shimFS) WriteFile(name string, b []byte, offset int64) (int, error) {
 		return 0, errors.New("ShinFS: WriteFile called on Directory: " + name)
 	}
 
-	file.write(swath{off: offset, array: b}, false)
+	nFC := file.write(swath{off: offset, array: b}, false)
+	if nFC == nil { //file was deleted recently
+		return 0, os.ErrNotExist
+	}
 	return f.mfs.WriteFile(name, b, offset)
 }
 
@@ -181,6 +182,14 @@ func (f *shimFS) Move(oldpath string, newpath string) error {
 
 func (f *shimFS) Remove(name string, recursive bool) error {
 	//fmt.Println("shim passed through a remove")
+	file, err := f.interStat(name)
+	if err != nil {
+		return err
+	}
+	f.filecacheLock.Lock()
+	delete(f.filecache, file.path())
+	f.filecacheLock.Unlock()
+	file.delete()
 	return f.mfs.Remove(name, recursive)
 }
 

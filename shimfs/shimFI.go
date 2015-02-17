@@ -116,6 +116,11 @@ type swath struct {
 //takes a read request, fills as much as it can, and returns a list of unfilled spaces
 func (f *shimFI) read(deets swath) ([]swath, int64) {
 	f.fileLock.RLock()
+	if f.writechunks == nil { //file got deleted before now, so forget it
+		f.fileLock.RUnlock()
+		return nil, 0
+	}
+
 	if len(f.writechunks) == 0 && len(f.cachechunks) == 0 {
 		f.fileLock.RUnlock()
 		return []swath{deets}, 0
@@ -205,6 +210,10 @@ func (f *shimFI) cache(deets swath) {
 	top := deets.off + int64(len(deets.array))
 
 	f.fileLock.Lock()
+	if f.cachechunks == nil { //file got deleted before now, so forget it
+		f.fileLock.Unlock()
+		return
+	}
 	f.cachechunks = append([]*fileChunk{nFC}, f.cachechunks...)
 	if top > f.size {
 		f.size = top
@@ -214,10 +223,15 @@ func (f *shimFI) cache(deets swath) {
 
 //Adds a newly written swath to the written array, returns created fileChunk
 func (f *shimFI) write(deets swath, isSynced bool) *fileChunk {
+
 	nFC := newFileChunk(deets, isSynced)
 	top := deets.off + int64(len(deets.array))
 
 	f.fileLock.Lock()
+	if f.writechunks == nil { //file got deleted before now, so forget it
+		f.fileLock.Unlock()
+		return nil
+	}
 	f.writechunks = append([]*fileChunk{nFC}, f.writechunks...)
 	if top > f.size {
 		f.size = top
@@ -226,6 +240,29 @@ func (f *shimFI) write(deets swath, isSynced bool) *fileChunk {
 	f.fileLock.Unlock()
 
 	return nFC
+}
+
+//Cleans up if this file is being deleted
+func (f *shimFI) delete() error {
+	f.fileLock.Lock()
+	if f.writechunks == nil { //file already deleted
+		f.fileLock.Unlock()
+		return os.ErrNotExist
+	}
+	for _, chunk := range f.writechunks {
+		chunk.chunkLock.Lock()
+		chunk.delete()
+		chunk.chunkLock.Unlock()
+	}
+	f.writechunks = nil
+	for _, chunk := range f.cachechunks {
+		chunk.chunkLock.Lock()
+		chunk.delete()
+		chunk.chunkLock.Unlock()
+	}
+	f.cachechunks = nil
+	f.fileLock.Unlock()
+	return nil
 }
 
 //Complying with os.FileSystem
