@@ -23,7 +23,7 @@ type shimFS struct {
 	mfs       minfs.MinFS   //Filesystem being shimmed
 	timeout   time.Duration //timeout if asynced
 	filecache     map[string]*shimFI
-	filecacheLock sync.RWMutex
+	filecacheLock *sync.RWMutex
 	giudCounter   chan int
 }
 
@@ -52,8 +52,6 @@ func New(tempPath string, tempSize int64, mfs minfs.MinFS) (minfs.MinFS, error) 
 		}
 	}
 
-	var m sync.RWMutex
-
 	guidchan := make(chan int, 8)
 	go func() {
 		count := 0
@@ -63,7 +61,7 @@ func New(tempPath string, tempSize int64, mfs minfs.MinFS) (minfs.MinFS, error) 
 		}
 	}()
 
-	return &shimFS{tempPath, tempSize, mfs, 5 * time.Second, make(map[string]*shimFI), m, guidchan}, nil
+	return &shimFS{tempPath, tempSize, mfs, 5 * time.Second, make(map[string]*shimFI), new(sync.RWMutex), guidchan}, nil
 }
 
 func (f *shimFS) addFI(fpath string, fi os.FileInfo) *shimFI {
@@ -177,11 +175,61 @@ func (f *shimFS) CreateDirectory(name string) error {
 }
 
 func (f *shimFS) Move(oldpath string, newpath string) error {
-	//fmt.Println("shim passed through a move")
-	return f.mfs.Move(oldpath, newpath)
+	oldpath = path.Clean(oldpath)
+	newpath = path.Clean(newpath)
+
+	file, err := f.interStat(oldpath)
+	if err != nil {
+		return err
+	}
+	err = f.mfs.Move(oldpath, newpath)
+
+	if err == nil {
+		//update file
+		file.changePath(newpath)
+
+		f.filecacheLock.Lock()
+		//Update the f.filecache
+		f.filecache[newpath] = file
+		delete(f.filecache, oldpath)
+
+		//force parent to update dirlist next readdir
+		parent, ok := f.filecache[(path.Dir(oldpath))]
+		if ok {
+			parent.invalidateDirAge()
+		}
+		f.filecacheLock.Unlock()
+
+		//update the FI
+		tFI, _ := f.mfs.Stat(newpath)
+		file.updateFi(tFI)
+
+		//if is a dir, handle it's children as well
+		if file.IsDir() {
+			if !strings.HasSuffix(oldpath, "/") {
+				oldpath += "/"
+			}
+			if !strings.HasSuffix(newpath, "/") {
+				newpath += "/"
+			}
+			trimLength := len(oldpath)
+			f.filecacheLock.Lock()
+			for opath, sfi := range f.filecache {
+				if strings.HasPrefix(opath, oldpath) {
+					npath := newpath + opath[trimLength:]
+					sfi.changePath(npath)
+					f.filecache[npath] = sfi
+					delete(f.filecache, opath)
+				}
+			}
+			f.filecacheLock.Unlock()
+		}
+	}
+	return err
 }
 
 func (f *shimFS) Remove(name string, recursive bool) error {
+	name = path.Clean(name)
 	file, err := f.interStat(name)
 	if err != nil {
 		return err
@@ -207,8 +255,11 @@ func (f *shimFS) Remove(name string, recursive bool) error {
 		}
 	}
 	f.filecacheLock.Unlock()
-
 	file.delete()
+
+	//force parent to update dirlist next readdir
+	parent, err := f.interStat(path.Dir(name))
+	parent.invalidateDirAge()
 	return nil
 }
 

@@ -13,14 +13,13 @@ type fileChunk struct {
 	mem       []byte
 	hd        string
 	aged      time.Time
-	chunkLock sync.RWMutex //this mutex is managed by the user, namely shimFI
+	chunkLock *sync.RWMutex //this mutex is managed by the user, namely shimFI
 }
 
 func newFileChunk(data swath, isSynced bool) *fileChunk {
-	var cL sync.RWMutex
 	newArray := make([]byte, len(data.array))
 	copy(newArray, data.array)
-	return &fileChunk{off: data.off, mem: newArray, width: int64(len(newArray)), aged: time.Now(), synced: isSynced, chunkLock: cL}
+	return &fileChunk{off: data.off, mem: newArray, width: int64(len(newArray)), aged: time.Now(), synced: isSynced, chunkLock: new(sync.RWMutex)}
 }
 
 func (f *fileChunk) toHD(tempfile string) {

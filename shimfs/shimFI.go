@@ -17,7 +17,7 @@ type shimFI struct {
 	modtime  time.Time
 	fi       os.FileInfo //original fileinfo
 	fiage    time.Time   //age of original fileinfo
-	fileLock sync.RWMutex
+	fileLock *sync.RWMutex
 
 	//if a file
 	writechunks []*fileChunk //written fileChunks, in approximate age order
@@ -29,8 +29,6 @@ type shimFI struct {
 }
 
 func newShimFI(fullpath string, fileinf os.FileInfo, uniqueid int) *shimFI {
-	var fl sync.RWMutex
-
 	if fileinf.IsDir() {
 		return &shimFI{
 			fpath:    fullpath,
@@ -40,7 +38,8 @@ func newShimFI(fullpath string, fileinf os.FileInfo, uniqueid int) *shimFI {
 			modtime:  fileinf.ModTime(),
 			fi:       fileinf,
 			fiage:    time.Now(),
-			fileLock: fl,
+			diritems: make([]string, 0),
+			fileLock: new(sync.RWMutex),
 		}
 	} else {
 		return &shimFI{
@@ -51,7 +50,7 @@ func newShimFI(fullpath string, fileinf os.FileInfo, uniqueid int) *shimFI {
 			modtime:     fileinf.ModTime(),
 			fi:          fileinf,
 			fiage:       time.Now(),
-			fileLock:    fl,
+			fileLock:    new(sync.RWMutex),
 			writechunks: make([]*fileChunk, 0),
 			cachechunks: make([]*fileChunk, 0),
 		}
@@ -63,6 +62,13 @@ func (f *shimFI) path() string {
 	retVal := f.fpath
 	f.fileLock.RUnlock()
 	return retVal
+}
+
+func (f *shimFI) changePath(newpath string) {
+	f.fileLock.Lock()
+	f.fpath = newpath
+	f.fiage = *new(time.Time)
+	f.fileLock.Unlock()
 }
 
 func (f *shimFI) updateFi(fi os.FileInfo) {
@@ -106,6 +112,12 @@ func (f *shimFI) dirItems() []string {
 	copy(dt, f.diritems)
 	f.fileLock.RUnlock()
 	return dt
+}
+
+func (f *shimFI) invalidateDirAge() {
+	f.fileLock.Lock()
+	f.dirage = *new(time.Time)
+	f.fileLock.Unlock()
 }
 
 type swath struct {
