@@ -21,6 +21,7 @@ type MinFS interface {
 	String() string
 	GetAttribute(path string, attribute string) (interface{}, error)
 	SetAttribute(path string, attribute string, newvalue interface{}) error
+	Close() error
 }
 
 // minFile isn't actually used in unfs2go, but it's got some code that might be useful so I'll just leave it here.

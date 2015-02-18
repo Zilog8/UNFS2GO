@@ -30,6 +30,18 @@ func (f *fileChunk) toHD(tempfile string) {
 	f.mem = nil
 }
 
+//Try to limit copying if we're sure the recipient won't be modifying the array
+func (f *fileChunk) slice() []byte {
+  if f.mem != nil {
+    return f.mem[0:]
+  }
+    destarray := make([]byte, f.width)
+    file, _ := os.Open(f.hd)
+		file.ReadAt(destarray, f.off)
+		file.Close()
+		return destarray
+}
+
 func (f *fileChunk) read(dest swath) int64 {
 	tof := dest.off - f.off
 	var retVal int

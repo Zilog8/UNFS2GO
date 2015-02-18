@@ -11,37 +11,55 @@ import (
 
 type osFS struct {
 	realpath string //Real path being exported
+	closed bool //false normally, true if closed
 }
 
 func New(realpath string) (minfs.MinFS, error) {
 	_, err := os.Stat(realpath)
 	if err == nil {
-		return &osFS{realpath}, nil
+		return &osFS{realpath, false}, nil
 	}
 	return nil, err
 }
 
+func (f *osFS) Close() error {
+if f.closed {
+    return errors.New("osFS error: Close: Already Closed")
+  }
+  f.closed = true
+  return nil
+}
+
 func (f *osFS) ReadFile(name string, b []byte, off int64) (int, error) {
+  if f.closed {
+    return 0, errors.New("osFS error: ReadFile: Already Closed")
+  }
 	realname := f.translate(name)
 	fh, err := os.Open(realname)
 	if err != nil {
-		return -1, err
+		return 0, err
 	}
 	defer fh.Close()
 	return fh.ReadAt(b, off)
 }
 
 func (f *osFS) WriteFile(name string, b []byte, off int64) (int, error) {
+	if f.closed {
+    return 0, errors.New("osFS error: WriteFile: Already Closed")
+  }
 	realname := f.translate(name)
 	fh, err := os.OpenFile(realname, os.O_RDWR, 0644)
 	if err != nil {
-		return -1, err
+		return 0, err
 	}
 	defer fh.Close()
 	return fh.WriteAt(b, off)
 }
 
 func (f *osFS) CreateFile(name string) error {
+	if f.closed {
+    return errors.New("osFS error: CreateFile: Already Closed")
+  }
 	realname := f.translate(name)
 	fil, err := os.Create(realname)
 	if err != nil {
@@ -52,17 +70,26 @@ func (f *osFS) CreateFile(name string) error {
 }
 
 func (f *osFS) CreateDirectory(name string) error {
+	if f.closed {
+    return errors.New("osFS error: CreateDirectory: Already Closed")
+  }
 	realname := f.translate(name)
 	return os.Mkdir(realname, 0777)
 }
 
 func (f *osFS) Move(oldpath string, newpath string) error {
+	if f.closed {
+    return errors.New("osFS error: Move: Already Closed")
+  }
 	orname := f.translate(oldpath)
 	nrname := f.translate(newpath)
 	return os.Rename(orname, nrname)
 }
 
 func (f *osFS) Remove(name string, recursive bool) error {
+	if f.closed {
+    return errors.New("osFS error: Remove: Already Closed")
+  }
 	realname := f.translate(name)
 	if recursive {
 		return os.RemoveAll(realname)
@@ -71,6 +98,9 @@ func (f *osFS) Remove(name string, recursive bool) error {
 }
 
 func (f *osFS) ReadDirectory(name string) ([]os.FileInfo, error) {
+	if f.closed {
+    return nil, errors.New("osFS error: ReadDirectory: Already Closed")
+  }
 	realname := f.translate(name)
 	fh, err := os.Open(realname)
 	if err != nil {
@@ -81,6 +111,9 @@ func (f *osFS) ReadDirectory(name string) ([]os.FileInfo, error) {
 }
 
 func (f *osFS) GetAttribute(path string, attribute string) (interface{}, error) {
+  if f.closed {
+    return nil, errors.New("osFS error: GetAttribute: Already Closed")
+  }
 	realname := f.translate(path)
 		fi, err := os.Stat(realname)
 		if err != nil {
@@ -96,6 +129,9 @@ func (f *osFS) GetAttribute(path string, attribute string) (interface{}, error) 
 }
 
 func (f *osFS) SetAttribute(path string, attribute string, newvalue interface{}) error {
+	if f.closed {
+    return errors.New("osFS error: SetAttribute: Already Closed")
+  }
 	realname := f.translate(path)
 	switch attribute {
 	case "modtime":
@@ -107,11 +143,20 @@ func (f *osFS) SetAttribute(path string, attribute string, newvalue interface{})
 }
 
 func (f *osFS) Stat(name string) (os.FileInfo, error) {
+	if f.closed {
+    return nil, errors.New("osFS error: Stat: Already Closed")
+  }
 	realname := f.translate(name)
 	return os.Stat(realname)
 }
 
-func (f *osFS) String() string { return "os(" + f.realpath + ")" }
+func (f *osFS) String() string {
+  retVal := "os(" + f.realpath + ")"
+  if f.closed {
+    retVal += "(Closed)"
+  }
+  return retVal
+}
 
 func (f *osFS) translate(path string) string {
 	path = pathpkg.Clean("/" + path)

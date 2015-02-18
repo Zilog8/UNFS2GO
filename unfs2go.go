@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 "os"
+	"os/signal"
 	"strconv"
 )
 
@@ -31,6 +32,19 @@ func main() {
 
 	ns = tfs
 		C.exports_parse(C.CString("/"), C.CString("rw"))
+
+	//Handle Ctrl-C so we can quit nicely
+
+	cc := make(chan os.Signal, 1)
+	signal.Notify(cc, os.Interrupt)
+	go func() {
+		<-cc
+		fmt.Println("Cleaning up, then quiting.")
+		ns.Close()
+		fmt.Println("Quiting.")
+		os.Exit(1)
+	}()
+
 	C.start()
 }
 
