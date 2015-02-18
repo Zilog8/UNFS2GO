@@ -39,9 +39,9 @@ func main() {
 	signal.Notify(cc, os.Interrupt)
 	go func() {
 		<-cc
-		fmt.Println("Cleaning up, then quiting.")
+		fmt.Println("Cleaning up, then quitting.")
 		ns.Close()
-		fmt.Println("Quiting.")
+		fmt.Println("Quitting.")
 		os.Exit(1)
 	}()
 
