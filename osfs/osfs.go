@@ -122,6 +122,8 @@ func (f *osFS) GetAttribute(path string, attribute string) (interface{}, error) 
 	switch attribute {
 	case "modtime":
 		return fi.ModTime(), nil
+	case "mode":
+		return fi.Mode(), nil
 	case "size":
 		return fi.Size(), nil
 	}
@@ -136,8 +138,13 @@ func (f *osFS) SetAttribute(path string, attribute string, newvalue interface{})
 	switch attribute {
 	case "modtime":
 		return os.Chtimes(realname, time.Now(), newvalue.(time.Time))
+	case "mode":
+		return os.Chmod(realname, newvalue.(os.FileMode))
 	case "size":
 		return os.Truncate(realname, newvalue.(int64))
+	case "own":
+		tIA := newvalue.([]int)
+		return os.Chown(realname, tIA[0], tIA[1])
 	}
 	return errors.New("SetAttribute Error: Unsupported attribute " + attribute)
 }
@@ -160,5 +167,5 @@ func (f *osFS) String() string {
 
 func (f *osFS) translate(path string) string {
 	path = pathpkg.Clean("/" + path)
-	return filepath.Join(f.realpath, path)
+	return pathpkg.Clean(filepath.Join(f.realpath, path))
 }

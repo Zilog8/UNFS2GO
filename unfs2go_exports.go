@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"reflect"
 	"strings"
 	"sync"
@@ -26,7 +27,7 @@ func go_init() C.int {
 //export go_readdir_helper
 func go_readdir_helper(dirpath *C.char, entryIndex C.int) *C.char {
 
-	pp := C.GoString(dirpath)
+	pp := pathpkg.Clean("/" + C.GoString(dirpath))
 	index := int(entryIndex)
 	arr, err := ns.ReadDirectory(pp)
 
@@ -43,7 +44,7 @@ func go_readdir_helper(dirpath *C.char, entryIndex C.int) *C.char {
 
 //export go_opendir_helper
 func go_opendir_helper(path *C.char) C.int {
-	pp := C.GoString(path)
+	pp := pathpkg.Clean("/" + C.GoString(path))
 	arr, err := ns.ReadDirectory(pp)
 
 	if err != nil {
@@ -57,7 +58,7 @@ func go_opendir_helper(path *C.char) C.int {
 func go_open(path *C.char, flags C.int) C.int {
 	//Return the filedescriptor for this path
 	//If file doesn't exist, return -1
-	pp := C.GoString(path)
+	pp := pathpkg.Clean("/" + C.GoString(path))
 	res := fddb.GetFD(pp)
 	if res > -1 {
 		//check if it's actually a file
@@ -95,7 +96,7 @@ func go_fstat(fd C.int, buf *C.go_statstruct) C.int {
 
 //export go_lstat
 func go_lstat(path *C.char, buf *C.go_statstruct) C.int {
-	pp := C.GoString(path)
+	pp := pathpkg.Clean("/" + C.GoString(path))
 	fd := fddb.GetFD(pp)
 	if fd != -1 {
 		return getStat(pp, fd, buf)
@@ -119,7 +120,7 @@ func go_fchmod(fd C.int, mode C.int) C.int {
 
 //export go_truncate
 func go_truncate(path *C.char, offset3 C.int) C.int {
-	pp := C.GoString(path)
+	pp := pathpkg.Clean("/" + C.GoString(path))
 	off := int64(offset3)
 	err := ns.SetAttribute(pp, "size", off)
 	if err != nil {
@@ -131,8 +132,8 @@ func go_truncate(path *C.char, offset3 C.int) C.int {
 
 //export go_rename
 func go_rename(oldpath *C.char, newpath *C.char) C.int {
-	op := C.GoString(oldpath)
-	np := C.GoString(newpath)
+	op := pathpkg.Clean("/" + C.GoString(oldpath))
+	np := pathpkg.Clean("/" + C.GoString(newpath))
 	err := ns.Move(op, np)
 	if err != nil {
 		fmt.Println("Error on rename", op, " to ", np, " due to ", err)
@@ -143,7 +144,7 @@ func go_rename(oldpath *C.char, newpath *C.char) C.int {
 
 //export go_utime_helper
 func go_utime_helper(path *C.char, actime C.int, modtime C.int) C.int {
-	pp := C.GoString(path)
+	pp := pathpkg.Clean("/" + C.GoString(path))
 	mod := time.Unix(int64(modtime), 0)
 	err := ns.SetAttribute(pp, "modtime", mod)
 	if err != nil {
@@ -172,7 +173,7 @@ func go_ftruncate(fd C.int, offset3 C.int) C.int {
 
 //export go_open_create
 func go_open_create(pathname *C.char, flags C.int, mode C.int) C.int {
-	pp := C.GoString(pathname)
+	pp := pathpkg.Clean("/" + C.GoString(pathname))
 	err := ns.CreateFile(pp)
 	if err != nil {
 		fmt.Println("Error open_create file at create: ", pp, " due to: ", err)
@@ -183,7 +184,7 @@ func go_open_create(pathname *C.char, flags C.int, mode C.int) C.int {
 
 //export go_remove
 func go_remove(path *C.char) C.int {
-	pp := C.GoString(path)
+	pp := pathpkg.Clean("/" + C.GoString(path))
 	st, err := ns.Stat(pp)
 
 	if err != nil {
@@ -207,7 +208,7 @@ func go_remove(path *C.char) C.int {
 
 //export go_rmdir_helper
 func go_rmdir_helper(path *C.char) C.int {
-	pp := C.GoString(path)
+	pp := pathpkg.Clean("/" + C.GoString(path))
 
 	st, err := ns.Stat(pp)
 	
@@ -235,7 +236,7 @@ func go_rmdir_helper(path *C.char) C.int {
 
 //export go_mkdir
 func go_mkdir(path *C.char, mode C.int) C.int {
-	pp := C.GoString(path)
+	pp := pathpkg.Clean("/" + C.GoString(path))
 	err := ns.CreateDirectory(pp)
 	if err != nil {
 		fmt.Println("Error making directory: ", pp, "\n", err)

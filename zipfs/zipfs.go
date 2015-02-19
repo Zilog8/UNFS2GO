@@ -266,6 +266,8 @@ func (fs *zipFS) GetAttribute(path string, attribute string) (interface{}, error
 	switch attribute {
 	case "modtime":
 		return fi.ModTime(), nil
+	case "mode":
+		return fi.Mode(), nil
 	case "size":
 		return fi.Size(), nil
 	}

@@ -369,6 +369,12 @@ func (f *shimFS) GetAttribute(path string, attribute string) (interface{}, error
 			return nil, errors.New("Error shimFS.GetAtt Stat: " + err.Error())
 		}
 		return fi.ModTime(), nil
+	case "mode":
+		fi, err := f.interStat(path)
+		if err != nil {
+			return nil, errors.New("Error shimFS.GetAtt Stat: " + err.Error())
+		}
+		return fi.Mode(), nil
 	case "size":
 		fi, err := f.interStat(path)
 		if err != nil {
@@ -376,7 +382,7 @@ func (f *shimFS) GetAttribute(path string, attribute string) (interface{}, error
 		}
 		return fi.Size(), nil
 	default:
-		return f.mfs.GetAttribute(path, attribute)
+		return nil, errors.New("GetAttribute Error: Unsupported attribute " + attribute)
 	}
 }
 
@@ -388,7 +394,11 @@ func (f *shimFS) SetAttribute(path string, attribute string, newvalue interface{
 	switch attribute {
 	case "modtime":
 		return f.mfs.SetAttribute(path, attribute, newvalue)
+	case "mode":
+		return f.mfs.SetAttribute(path, attribute, newvalue)
 	case "size":
+		return f.mfs.SetAttribute(path, attribute, newvalue)
+	case "own":
 		return f.mfs.SetAttribute(path, attribute, newvalue)
 	}
 	return errors.New("SetAttribute Error: Unsupported attribute " + attribute)
