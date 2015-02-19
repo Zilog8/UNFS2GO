@@ -39,13 +39,17 @@ func main() {
 	signal.Notify(cc, os.Interrupt)
 	go func() {
 		<-cc
+		shutDown()
+	}()
+
+	C.start()
+}
+
+func shutDown() {
 		fmt.Println("Cleaning up, then quitting.")
 		ns.Close()
 		fmt.Println("Quitting.")
 		os.Exit(1)
-	}()
-
-	C.start()
 }
 
 func parseArgs(args []string) (minfs.MinFS, error) {

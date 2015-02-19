@@ -98,11 +98,35 @@ func go_fstat(fd C.int, buf *C.go_statstruct) C.int {
 func go_lstat(path *C.char, buf *C.go_statstruct) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
 	fd := fddb.GetFD(pp)
-	if fd != -1 {
 		return getStat(pp, fd, buf)
-	} else {
+}
+
+//export go_shutdown
+func go_shutdown() {
+	shutDown()
+}
+
+//export go_fchown
+func go_fchown(fd C.int, owner C.int, group C.int) C.int {
+	gofd := int(fd)
+	pp, err := fddb.GetPath(gofd)
+	if err == nil {
+		err = ns.SetAttribute(pp, "own", []int{int(owner), int(group)})
+		if err == nil {
+			return 0
+		}
+	}
 		return -1
 	}
+
+//export go_lchown
+func go_lchown(path *C.char, owner C.int, group C.int) C.int {
+	pp := pathpkg.Clean("/" + C.GoString(path))
+	err := ns.SetAttribute(pp, "own", []int{int(owner), int(group)})
+	if err == nil {
+		return 0
+	}
+	return -1
 }
 
 //export go_fchmod
@@ -114,6 +138,16 @@ func go_fchmod(fd C.int, mode C.int) C.int {
 		if err == nil {
 			return 0
 		}
+	}
+	return -1
+}
+
+//export go_chmod
+func go_chmod(path *C.char, mode C.int) C.int {
+	pp := pathpkg.Clean("/" + C.GoString(path))
+	err := ns.SetAttribute(pp, "mode", os.FileMode(int(mode)))
+	if err == nil {
+		return 0
 	}
 	return -1
 }
