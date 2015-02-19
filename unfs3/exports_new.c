@@ -671,19 +671,3 @@ nfsstat3 exports_rw(void)
 	else
 		return NFS3ERR_ROFS;
 }
-
-/*
- * returns the last looked-up anonuid for a mount (ANON_NOTSPECIAL means none in effect)
- */
-uint32 exports_anonuid(void)
-{
-	return last_anonuid;
-}
-
-/*
- * returns the last looked-up anongid for a mount (ANON_NOTSPECIAL means none in effect)
- */
-uint32 exports_anongid(void)
-{
-	return last_anongid;
-}
