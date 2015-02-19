@@ -29,24 +29,27 @@ In debian:
 	sudo apt-get install rpcbind nfs-common
 	
 Usage:
-The first argument gives the bind type, with additional arguments
+
+The first argument gives the bind type, with additional arguments (if any)
 determined by the individual bind type. 
 
-	unfs2go -o ./sharedDir
+	unfs2go -zip ./zipfile.zip
+	
+If you want to use the shimFS it has to be the first argument:
 
-If you want to use the shimFS (acts as a cache-ing layer for another
-backend. Might be useful for network filesystems) it has to be the first
-argument:
+	unfs2go -shim 100 -sftp username:password@example.com:22/
 
-	unfs2go -s -z ./zipfile.zip
+shimFS acts as a cache-ing layer for another backend. It might be useful for
+network filesystems, if I ever get it to work right. It's somewhat "pre-alpha".
 	
 Backends:
 
 bind type  | configuration     | description
----------- | ----------------- | -----------
--s         |                   | acts as a cache-ing layer for another backend
--o         | sharedDir         | shares a system path.
--z         | zipfile           | uses a zip file's contents. Read only.
+---------- | ---------------------------- | -----------
+-os        | sharedDir                    | shares a system path.
+-zip       | zipfile                      | uses a zip file's contents. Read only.
+-sftp      | user:pass@moo.com:port/Share | uses an sftp server.
+-shim      | cachesizeinMiB [otherBind]   | acts as a cache-ing layer for another backend.
 
 Mounting:
 
@@ -59,6 +62,9 @@ Limitations:
 This is a horrible hack by a someone who doesn't know much Go and knows even less C.
 Thus there are obviously some limitations, most of which are probably unknown.
 Of the known:
+
+-shimFS currently only uses ram, and also never gives it up. So, it's a giant 
+ and intentional memory leak for now.
 
 -In some (many? most?) systems, the server fails at start with an error along the
 lines of "RPC: Authentication error; why = Client credential too weak". It's some
@@ -88,7 +94,10 @@ In the "zipfs" folder you'll find the code that's been re-purposed from the godo
 tool (https://go.googlesource.com/tools/+/master/godoc/vfs), as well as the AUTHORS,
 LICENSE, etc. files for that code.
 
-As for my paltry code and modifications:
+"sftpfs" uses Dave Cheney's sftp project (https://github.com/pkg/sftp) to connect
+to servers.
+
+As for my own paltry code and modifications:
 
 UNFS 2 Go
 (C) 2014, Zilog8 <zeuscoding@gmail.com>
