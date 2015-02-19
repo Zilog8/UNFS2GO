@@ -168,11 +168,24 @@ func go_truncate(path *C.char, offset3 C.int) C.int {
 func go_rename(oldpath *C.char, newpath *C.char) C.int {
 	op := pathpkg.Clean("/" + C.GoString(oldpath))
 	np := pathpkg.Clean("/" + C.GoString(newpath))
-	err := ns.Move(op, np)
+
+	fi, err := ns.Stat(op)
+	if err != nil {
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "not found") || strings.Contains(lower, "not exist") {
+			fmt.Println("Error rename: not found:", op)
+			return -2
+		}
+		fmt.Println("Error rename: ", op, " internal stat errored:", err)
+		return -1
+	}
+
+	err = ns.Move(op, np)
 	if err != nil {
 		fmt.Println("Error on rename", op, " to ", np, " due to ", err)
 		return -1
 	}
+	fddb.ReplacePath(op, np, fi.IsDir())
 	return 0
 }
 
@@ -403,6 +416,30 @@ func (f *fdCache) GetPath(fd int) (string, error) {
 	} else {
 		return "", errors.New(fmt.Sprint("Error GetPath, filedescriptor not found ", fd))
 	}
+}
+
+func (f *fdCache) ReplacePath(oldpath, newpath string, isdir bool) {
+	f.FDlistLock.Lock()
+	fd := f.PathMapA[oldpath]
+	delete(f.PathMapA, oldpath)
+	delete(f.PathMapB, fd)
+	f.PathMapA[newpath] = fd
+	f.PathMapB[fd] = newpath
+
+	if isdir {
+		op := oldpath + "/"
+		np := newpath + "/"
+		for path, fh := range f.PathMapA {
+			if strings.HasPrefix(path, op) {
+				delete(f.PathMapA, path)
+				delete(f.PathMapB, fh)
+				path = strings.Replace(path, op, np, 1)
+				f.PathMapA[path] = fh
+				f.PathMapB[fh] = path
+			}
+		}
+	}
+	f.FDlistLock.Unlock()
 }
 
 func (f *fdCache) GetFD(path string) int {
