@@ -15,7 +15,6 @@
 #include "exports_new.c"
 #include "fh.c"
 #include "fh_cache.c"
-#include "fd_cache.c"
 #include "xdr.c"
 #include "attr.c"
 #include "nfs.c"
@@ -95,14 +94,6 @@ void daemon_exit(int error)
 {
 #ifndef WIN32
     if (error == SIGUSR1) {
-	if (fh_cache_use > 0)
-	    fprintf(stderr, "fh entries %i access %i hit %i miss %i\n",
-		   fh_cache_max, fh_cache_use, fh_cache_hit,
-		   fh_cache_use - fh_cache_hit);
-	else
-	     fprintf(stderr, "fh cache unused\n");
-	 fprintf(stderr, "open file descriptors: read %i, write %i\n",
-	       fd_cache_readers, fd_cache_writers);
 	return;
     }
 #endif				       /* WIN32 */
@@ -118,8 +109,6 @@ void daemon_exit(int error)
 
     if (error == SIGSEGV)
 	fprintf(stderr, "segmentation fault\n");
-
-    fd_cache_purge();
 
     if (opt_detach)
 	closelog();
@@ -579,7 +568,6 @@ static void unfs3_svc_run(void)
 #endif
 
     for (;;) {
-	fd_cache_close_inactive();
 
 #ifdef HAVE_SVC_GETREQ_POLL
 	r = poll(svc_pollfd, svc_max_pollfd, 2*1000);
@@ -653,7 +641,6 @@ static void start(void) {
     register_mount_service(udptransp, tcptransp);
 	printf("services registered\n");
 	fh_cache_init();
-	fd_cache_init();
 	printf("caches inited, about to hit main loop\n");
 	unfs3_svc_run();
 }

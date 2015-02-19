@@ -10,7 +10,6 @@
 #include "nfs.h"
 #include "../backend_go.h"
 #include "mount.h"
-#include "fd_cache.h"
 #include "fh.h"
 #include "exports_new.h"
 #include "xdr.h"

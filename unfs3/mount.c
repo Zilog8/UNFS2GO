@@ -197,11 +197,6 @@ void *mountproc_umnt_3_svc(dirpath * argp, struct svc_req *rqstp)
     static void *result = NULL;
 
     remove_mount(*argp, rqstp);
-
-    /* if no more mounts are active, flush all open file descriptors */
-    if (mount_cnt == 0)
-	fd_cache_purge();
-
     return &result;
 }
 
@@ -211,11 +206,6 @@ void *mountproc_umntall_3_svc(U(void *argp), struct svc_req *rqstp)
     static void *result = NULL;
 
     remove_mount(NULL, rqstp);
-
-    /* if no more mounts are active, flush all open file descriptors */
-    if (mount_cnt == 0)
-	fd_cache_purge();
-
     return &result;
 }
 

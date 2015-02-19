@@ -6,6 +6,7 @@
  * see file LICENSE for license details
  */
  #include <utime.h> //utimbuf
+ 
 /*
  * decompose filehandle and switch user if permitted access
  * otherwise zero result structure and return with error status
@@ -97,6 +98,48 @@ GETATTR3res *nfsproc3_getattr_3_svc(GETATTR3args * argp,
 	post.post_op_attr_u.attributes;
 
     return &result;
+}
+
+/*
+ * open a file descriptor
+ */
+int fd_open(const char *path, nfs_fh3 nfh, int kind)
+{
+    int res, fd;
+    backend_statstruct buf;
+    unfs3_fh_t *fh = (void *) nfh.data.data_val;
+
+    /* call open to obtain new fd */
+	if (kind == UNFS3_FD_READ)
+	    fd = backend_open(path, O_RDONLY);
+	else
+	    fd = backend_open(path, O_WRONLY);
+	if (fd == -1)
+	    return -1;
+
+	/* check for local fs race */
+	res = backend_fstat(fd, &buf);
+	if (res == -2) { 
+		backend_close(fd);
+		errno = ENOENT;
+	    return -1;
+	}
+	if ((res == -1) ||
+	    (fh->dev != buf.st_dev || fh->ino != buf.st_ino ||
+	     fh->gen != backend_get_gen(buf, fd, path))) {
+	    /* 
+	     * local fs changed meaning of path between
+	     * calling NFS operation doing fh_decomp and
+	     * arriving here
+	     *
+	     * set errno to ELOOP to make calling NFS
+	     * operation return NFS3ERR_STALE
+	     */
+	    backend_close(fd);
+	    errno = ELOOP;
+	    return -1;
+	}
+	return fd;
 }
 
 /*
@@ -264,7 +307,7 @@ READ3res *nfsproc3_read_3_svc(READ3args * argp, struct svc_req * rqstp)
 	argp->count = maxdata;
 
     if (result.status == NFS3_OK) {
-	fd = fd_open(path, argp->file, UNFS3_FD_READ, TRUE);
+	fd = fd_open(path, argp->file, UNFS3_FD_READ);
 	if (fd != -1) {
 	    /* read one more to check for eof */
 	    res = backend_pread(fd, buf, argp->count + 1, argp->offset);
@@ -274,9 +317,9 @@ READ3res *nfsproc3_read_3_svc(READ3args * argp, struct svc_req * rqstp)
 
 	    /* close for real when hitting eof */
 	    if (result.READ3res_u.resok.eof)
-		fd_close(fd, UNFS3_FD_READ, FD_CLOSE_REAL);
+			backend_close(fd);
 	    else {
-		fd_close(fd, UNFS3_FD_READ, FD_CLOSE_VIRT);
+			backend_close(fd);
 		res--;
 	    }
 
@@ -320,8 +363,7 @@ WRITE3res *nfsproc3_write_3_svc(WRITE3args * argp, struct svc_req * rqstp)
 	   fd will be removed from the cache by fd_close() below, so adding
 	   it to and removing it from the cache is just a waste of CPU cycles 
 	 */
-	fd = fd_open(path, argp->file, UNFS3_FD_WRITE,
-		     (argp->stable == UNSTABLE));
+	fd = fd_open(path, argp->file, UNFS3_FD_WRITE);
 	if (fd != -1) {
 	    res =
 		backend_pwrite(fd, argp->data.data_val, argp->data.data_len,
@@ -329,9 +371,9 @@ WRITE3res *nfsproc3_write_3_svc(WRITE3args * argp, struct svc_req * rqstp)
 
 	    /* close for real if not UNSTABLE write */
 	    if (argp->stable == UNSTABLE)
-		res_close = fd_close(fd, UNFS3_FD_WRITE, FD_CLOSE_VIRT);
+		res_close = backend_close(fd);
 	    else
-		res_close = fd_close(fd, UNFS3_FD_WRITE, FD_CLOSE_REAL);
+		res_close = backend_close(fd);
 
 	    /* we always do fsync(), never fdatasync() */
 	    if (argp->stable == DATA_SYNC)
@@ -944,12 +986,21 @@ COMMIT3res *nfsproc3_commit_3_svc(COMMIT3args * argp, struct svc_req * rqstp)
     static COMMIT3res result;
     char *path;
     int res;
+    int res1;
+    int res2;
 
     PREP(path, argp->file);
     result.status = join(is_reg(), exports_rw());
 
     if (result.status == NFS3_OK) {
-	res = fd_sync(argp->file);
+	
+    unfs3_fh_t *fh = (void *) argp->file.data.data_val;
+	res1 = backend_fsync(fh->ino);
+	res2 = backend_close(fh->ino);
+	/* return -1 if something went wrong during sync or close */
+	if (res1 == -1 || res2 == -1) {
+	    res = -1;
+	}
 	if (res != -1)
 	    memcpy(result.COMMIT3res_u.resok.verf, wverf, NFS3_WRITEVERFSIZE);
 	else
