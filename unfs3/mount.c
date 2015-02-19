@@ -121,7 +121,7 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
     static unfs3_fh_t fh;
     static mountres3 result;
     static int auth = AUTH_UNIX;
-    int authenticated = 0;
+    int authenticated = 1;
     char *password;
 
     /* We need to modify the *argp pointer. Make a copy. */
@@ -134,48 +134,6 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	       inet_ntoa(get_remote(rqstp)));
 	result.fhs_status = MNT3ERR_INVAL;
 	return &result;
-    }
-
-    /* Check for "mount commands" */
-    if (strncmp(dpath, "@getnonce", sizeof("@getnonce") - 1) == 0) {
-	if (backend_gen_nonce(nonce) < 0) {
-	    result.fhs_status = MNT3ERR_IO;
-	} else {
-	    result.fhs_status = MNT3_OK;
-	    result.mountres3_u.mountinfo.fhandle.fhandle3_len = 32;
-	    result.mountres3_u.mountinfo.fhandle.fhandle3_val = nonce;
-	    result.mountres3_u.mountinfo.auth_flavors.auth_flavors_len = 1;
-	    result.mountres3_u.mountinfo.auth_flavors.auth_flavors_val =
-		&auth;
-	}
-	fprintf(stderr, "Mount svc: unknown return 01\n");
-	return &result;
-    } else if (strncmp(dpath, "@password:", sizeof("@password:") - 1) == 0) {
-	char pw[PASSWORD_MAXLEN + 1];
-
-	mnt_cmd_argument(&dpath, "@password:", pw, PASSWORD_MAXLEN);
-	if (exports_options(dpath, rqstp, &password, NULL) != -1) {
-	    authenticated = !strcmp(password, pw);
-	}
-	/* else leave authenticated unchanged */
-    } else if (strncmp(dpath, "@otp:", sizeof("@otp:") - 1) == 0) {
-	/* The otp from the client */
-	char otp[PASSWORD_MAXLEN + 1];
-
-	/* Our calculated otp */
-	char hexdigest[32];
-
-	mnt_cmd_argument(&dpath, "@otp:", otp, PASSWORD_MAXLEN);
-	if (exports_options(dpath, rqstp, &password, NULL) != -1) {
-	    otp_digest(nonce, password, hexdigest);
-
-	    /* Compare our calculated digest with what the client submitted */
-	    authenticated = !strncmp(hexdigest, otp, 32);
-
-	    /* Change nonce */
-	    backend_gen_nonce(nonce);
-	}
-	/* else leave authenticated unchanged */
     }
 
     if ((exports_opts & OPT_REMOVABLE) && export_point(dpath)) {

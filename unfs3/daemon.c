@@ -11,7 +11,6 @@
 #include <rpc/rpc.h>
 #include <errno.h>
 #include "daemon.h"
-#include "password.c"
 #include "../gosupport.c"
 #include "exports_new.c"
 #include "fh.c"
