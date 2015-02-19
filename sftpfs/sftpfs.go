@@ -80,7 +80,7 @@ func (f *sftpFS) Close() error {
 }
 
 func (f *sftpFS) CreateFile(name string) error {
-	fmt.Println("sftpFS: CreateFile:", name)
+	//fmt.Println("sftpFS: CreateFile:", name)
 	if f.closed {
 		return errors.New("sftpFS error: CreateFile: Already Closed")
 	}
@@ -94,7 +94,7 @@ func (f *sftpFS) CreateFile(name string) error {
 }
 
 func (f *sftpFS) ReadDirectory(name string) ([]os.FileInfo, error) {
-	fmt.Println("sftpFS: ReadDirectory:", name)
+	//fmt.Println("sftpFS: ReadDirectory:", name)
 	if f.closed {
 		return nil, errors.New("sftpFS error: ReadDirectory: Already Closed")
 	}
@@ -103,7 +103,7 @@ func (f *sftpFS) ReadDirectory(name string) ([]os.FileInfo, error) {
 }
 
 func (f *sftpFS) Stat(name string) (os.FileInfo, error) {
-	fmt.Println("sftpFS: Stat:", name)
+	//fmt.Println("sftpFS: Stat:", name)
 	if f.closed {
 		return nil, errors.New("sftpFS error: Stat: Already Closed")
 	}
@@ -117,7 +117,7 @@ func (f *sftpFS) Stat(name string) (os.FileInfo, error) {
 }
 
 func (f *sftpFS) CreateDirectory(name string) error {
-	fmt.Println("sftpFS: CreateDirectory:", name)
+	//fmt.Println("sftpFS: CreateDirectory:", name)
 	if f.closed {
 		return errors.New("sftpFS error: CreateDirectory: Already Closed")
 	}
@@ -126,7 +126,7 @@ func (f *sftpFS) CreateDirectory(name string) error {
 }
 
 func (f *sftpFS) SetAttribute(path string, attribute string, newvalue interface{}) error {
-	fmt.Println("sftpFS: SetAttr:", attribute, "for", path, "to", newvalue)
+	//fmt.Println("sftpFS: SetAttr:", attribute, "for", path, "to", newvalue)
 	if f.closed {
 		return errors.New("sftpFS error: SetAttribute: Already Closed")
 	}
@@ -146,7 +146,7 @@ func (f *sftpFS) SetAttribute(path string, attribute string, newvalue interface{
 }
 
 func (f *sftpFS) GetAttribute(path string, attribute string) (interface{}, error) {
-	fmt.Println("sftpFS: GetAttr:", attribute, "for", path)
+	//fmt.Println("sftpFS: GetAttr:", attribute, "for", path)
 	if f.closed {
 		return nil, errors.New("sftpFS error: GetAttribute: Already Closed")
 	}
@@ -167,7 +167,7 @@ func (f *sftpFS) GetAttribute(path string, attribute string) (interface{}, error
 }
 
 func (f *sftpFS) Remove(name string, recursive bool) error {
-	fmt.Println("sftpFS: Remove:", name)
+	//fmt.Println("sftpFS: Remove:", name)
 	if f.closed {
 		return errors.New("sftpFS error: Remove: Already Closed")
 	}
@@ -184,7 +184,7 @@ func (f *sftpFS) String() string {
 }
 
 func (f *sftpFS) Move(oldpath string, newpath string) error {
-	fmt.Println("sftpFS: Move:", oldpath, "to", newpath)
+	//fmt.Println("sftpFS: Move:", oldpath, "to", newpath)
 	if f.closed {
 		return errors.New("sftpFS error: Move: Already Closed")
 	}
@@ -194,7 +194,7 @@ func (f *sftpFS) Move(oldpath string, newpath string) error {
 }
 
 func (f *sftpFS) ReadFile(name string, b []byte, off int64) (int, error) {
-	fmt.Println("sftpFS: ReadFile:", name)
+	//fmt.Println("sftpFS: ReadFile:", name)
 	if f.closed {
 		return 0, errors.New("sftpFS error: ReadFile: Already Closed")
 	}
@@ -213,7 +213,7 @@ func (f *sftpFS) ReadFile(name string, b []byte, off int64) (int, error) {
 }
 
 func (f *sftpFS) WriteFile(name string, b []byte, off int64) (int, error) {
-	fmt.Println("sftpFS: WriteFile:", name)
+	//fmt.Println("sftpFS: WriteFile:", name)
 	if f.closed {
 		return 0, errors.New("sftpFS error: WriteFile: Already Closed")
 	}
