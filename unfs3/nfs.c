@@ -155,9 +155,12 @@ LOOKUP3res *nfsproc3_lookup_3_svc(LOOKUP3args * argp, struct svc_req * rqstp)
 
     if (result.status == NFS3_OK) {
 	res = backend_lstat(obj, &buf);
-	if (res == -1)
+		if (res < 0){
+			if (res == -2) { 
+				errno = ENOENT;
+			}
 	    result.status = lookup_err();
-	else {
+		}	else {
 	    if (strcmp(argp->what.name, ".") == 0 ||
 		strcmp(argp->what.name, "..") == 0) {
 		fh = fh_comp_ptr(obj, rqstp, 0);
@@ -182,7 +185,6 @@ LOOKUP3res *nfsproc3_lookup_3_svc(LOOKUP3args * argp, struct svc_req * rqstp)
 
     /* overlaps with resfail */
     result.LOOKUP3res_u.resok.dir_attributes = get_post_stat(path, rqstp);
-
     return &result;
 }
 
@@ -191,28 +193,13 @@ ACCESS3res *nfsproc3_access_3_svc(ACCESS3args * argp, struct svc_req * rqstp)
     static ACCESS3res result;
     char *path;
     post_op_attr post;
-    mode_t mode;
     int newaccess = 0;
 
     PREP(path, argp->object);
     post = get_post_cached(rqstp);
-    mode = post.post_op_attr_u.attributes.mode;
 
-    if (access(path, R_OK) != -1)
-        newaccess |= ACCESS3_READ;
-
-    if (access(path, W_OK) != -1)
-        newaccess |= ACCESS3_MODIFY | ACCESS3_EXTEND;
-
-    if (access(path, X_OK) != -1) {
-        newaccess |= ACCESS3_EXECUTE;
-        if (opt_readable_executables)
-            newaccess |= ACCESS3_READ;
-    }
-
-    /* root is allowed everything */
-    if (get_uid(rqstp) == 0)
-	newaccess |= ACCESS3_READ | ACCESS3_MODIFY | ACCESS3_EXTEND;
+    /* allow everything */
+    newaccess |= ACCESS3_READ | ACCESS3_MODIFY | ACCESS3_EXTEND | ACCESS3_EXECUTE;
 
     /* adjust if directory */
     if (post.post_op_attr_u.attributes.type == NF3DIR) {
@@ -224,7 +211,7 @@ ACCESS3res *nfsproc3_access_3_svc(ACCESS3args * argp, struct svc_req * rqstp)
     }
 
     result.status = NFS3_OK;
-    result.ACCESS3res_u.resok.access = newaccess & argp->access;
+    result.ACCESS3res_u.resok.access = newaccess;
     result.ACCESS3res_u.resok.obj_attributes = post;
 
     return &result;
@@ -301,7 +288,7 @@ READ3res *nfsproc3_read_3_svc(READ3args * argp, struct svc_req * rqstp)
 		res--;
 	    }
 
-	    if (res >= 0) {
+	    if (res > -1) {
 		result.READ3res_u.resok.count = res;
 		result.READ3res_u.resok.data.data_len = res;
 		result.READ3res_u.resok.data.data_val = buf;
@@ -437,11 +424,11 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 	    fd = backend_open_create(obj, flags, create_mode(new_attr));
 	}
 
-    if (fd != -1) {
-	//fprintf(stderr,  "Successful open\n");
+    if (fd > 0) {
+		//fprintf(stderr,  "NFS3 Create: Successful open\n");
 	res = backend_fstat(fd, &buf);
-	if (res != -1) {
-	//fprintf(stderr,  "Successful stat\n");
+		if (res > -1) {
+		//fprintf(stderr,  "NFS3 Create: Successful stat\n");
 	    gen = backend_get_gen(buf, fd, obj);
 	    fh_cache_add(buf.st_dev, buf.st_ino, obj);
 	    backend_close(fd);
@@ -450,12 +437,16 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 		fh_extend_post(argp->where.dir, buf.st_dev, buf.st_ino, gen);
 	    result.CREATE3res_u.resok.obj_attributes =
 		get_post_buf(buf, rqstp);
+		} else if (res==-2) { 
+			backend_close(fd);
+			result.status = NFS3ERR_NOENT;
+			fprintf(stderr,  "NFS3 Create: stat() failed\n");
 	} else {
-	//fprintf(stderr,  "backend_fstat() or backend_store_create_verifier() failed\n");
+			fprintf(stderr,  "NFS3 Create: Stat result i%\n", res);
+			fprintf(stderr,  "NFS3 Create: backend_fstat() or backend_store_create_verifier() failed\n");
 	    backend_close(fd);
 	    result.status = NFS3ERR_IO;
 	}
-
     } else if (result.status == NFS3_OK) {
 	
 	//fprintf(stderr,  "open() failed\n");
@@ -467,7 +458,7 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 		res = backend_fstat(fd, &buf);
 	    }
 
-	    if (res != -1) {
+	    if (res > -1) {
 		if (backend_check_create_verifier
 		    (&buf, argp->how.createhow3_u.verf)) {
 	//fprintf(stderr,  "The verifier matched. Return success\n");
@@ -486,7 +477,8 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 		}
 	    }
 	}
-	if (res == -1) {
+	if (res < 0) {
+		if (res == -2) { errno = ENOENT;}
 	    result.status = create_err();
 	}
     }
@@ -775,6 +767,8 @@ RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
 	if (result.status == NFS3_OK) {
 	    change_readdir_cookie();
 	    res = backend_rename(from_obj, to_obj);
+		if (res == -2)
+			errno = ENOENT;
 	    if (res == -1)
 		result.status = rename_err();
 	}
