@@ -140,7 +140,10 @@ READDIR3res read_dir(const char *path, cookie3 cookie, cookieverf3 verf,
 		sprintf(scratch, "%s/%s", path, this->d_name);
 
 	    res = backend_lstat(scratch, &buf);
-	    if (res == -1) {
+	    if (res <0) {
+			if (res == -2) {
+				errno = ENOENT;
+			}
 		result.status = readdir_err();
 		backend_closedir(search);
 		return result;

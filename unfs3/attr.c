@@ -162,7 +162,7 @@ post_op_attr get_post_buf(backend_statstruct buf, struct svc_req * req)
     if (exports_opts & OPT_REMOVABLE) {
 	backend_statstruct epbuf;
 
-	if (backend_lstat(export_path, &epbuf) != -1 &&
+	if (backend_lstat(export_path, &epbuf) > -1 &&
 	    buf.st_dev == epbuf.st_dev) {
 	    result.post_op_attr_u.attributes.fsid = export_fsid;
 	}
@@ -208,7 +208,7 @@ static post_op_attr get_post_ll(const char *path, uint32 dev, uint64 ino,
 	return error_attr;
 
     res = backend_lstat(path, &buf);
-    if (res == -1)
+    if (res < 0)
 	return error_attr;
 
     /* protect against local fs race */
@@ -303,7 +303,9 @@ static nfsstat3 set_attr_unsafe(const char *path, nfs_fh3 nfh, sattr3 new)
     int res;
 
     res = backend_lstat(path, &buf);
-    if (res != 0)
+    if (res == -2)
+	return NFS3ERR_NOENT;
+    if (res == -1)
 	return NFS3ERR_STALE;
 
     /* check local fs race */
@@ -358,7 +360,9 @@ nfsstat3 set_attr(const char *path, nfs_fh3 nfh, sattr3 new)
     backend_statstruct buf;
 
     res = backend_lstat(path, &buf);
-    if (res != 0)
+    if (res == -2)
+	return NFS3ERR_NOENT;
+    if (res == -1)
 	return NFS3ERR_STALE;
 
     /* 
@@ -388,6 +392,10 @@ nfsstat3 set_attr(const char *path, nfs_fh3 nfh, sattr3 new)
 	return set_attr_unsafe(path, nfh, new);
 
     res = backend_fstat(fd, &buf);
+    if (res == -2) {
+	backend_close(fd);
+	return NFS3ERR_NOENT;
+    }
     if (res == -1) {
 	backend_close(fd);
 	return NFS3ERR_STALE;

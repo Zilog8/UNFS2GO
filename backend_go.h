@@ -20,8 +20,6 @@
  * system calls
  */
 #define backend_chmod go_chmod
-#define backend_chown go_chown
-#define backend_lchown go_lchown
 #define backend_close go_close
 #define backend_closedir go_closedir
 #define backend_fchmod go_fchmod
@@ -33,6 +31,7 @@
 #define backend_geteuid geteuid
 #define backend_getgid getgid
 #define backend_getuid getuid
+#define backend_lchown go_lchown
 #define backend_link go_link
 #define backend_lseek go_lseek
 #define backend_lstat go_lstat
@@ -53,7 +52,6 @@
 #define backend_setegid setegid
 #define backend_seteuid seteuid
 #define backend_setgroups setgroups
-#define backend_stat go_stat
 #define backend_statvfs go_statvfs
 #define backend_symlink go_symlink
 #define backend_truncate go_truncate
@@ -67,7 +65,6 @@
 #define backend_passwdstruct go_passwdstruct
 #define backend_getpwnam(name) NULL
 #define backend_flock go_flock
-#define backend_getpid go_getpid
 #define backend_store_create_verifier go_store_create_verifier
 #define backend_check_create_verifier go_check_create_verifier
 #endif

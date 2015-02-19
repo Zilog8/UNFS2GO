@@ -187,13 +187,17 @@ unfs3_fh_t fh_comp_raw(const char *path, struct svc_req *rqstp, int need_dir)
     }
 
     res = backend_lstat(path, &buf);
+	if (res == -2) {
+		//fprintf(stderr, "fh_comp_raw: Not Found for '%s'\n", path);
+	    return invalid_fh;
+	}
     if (res == -1) {
-	  fprintf(stderr, "fh_comp_raw: failed second test for '%s'\n", path);
+	    //fprintf(stderr, "fh_comp_raw: failed second test for '%s'\n", path);
 		return invalid_fh;
 	}
     /* check for dir if need_dir is set */
     if (need_dir != 0 && !S_ISDIR(buf.st_mode)) {
-		fprintf(stderr, "fh_comp_raw: failed third test for '%s' mode was %i\n", path, buf.st_mode);
+		//fprintf(stderr, "fh_comp_raw: failed third test for '%s' mode was %i\n", path, buf.st_mode);
 		return invalid_fh;
 	}
 	
@@ -203,7 +207,6 @@ unfs3_fh_t fh_comp_raw(const char *path, struct svc_req *rqstp, int need_dir)
 
     /* special case for root directory */
     if (strcmp(path, "/") == 0) {
-		fprintf(stderr, "fh_comp_raw: passed as root directory for '%s'\n", path);
 		return fh;
 	}
     strcpy(work, path);
@@ -216,6 +219,10 @@ unfs3_fh_t fh_comp_raw(const char *path, struct svc_req *rqstp, int need_dir)
 	    *last = 0;
 
 	res = backend_lstat(work, &buf);
+	if (res == -2) {
+		fprintf(stderr, "fh_comp_raw: Not Found for '%s'\n", path);
+	    return invalid_fh;
+	}
 	if (res == -1) {
 		fprintf(stderr, "fh_comp_raw: failed fourth test for '%s'\n", path);
 	    return invalid_fh;
@@ -312,7 +319,7 @@ post_op_fh3 fh_extend_type(nfs_fh3 fh, const char *path, unsigned int type)
     int res;
 
     res = backend_lstat(path, &buf);
-    if (res == -1 || (buf.st_mode & type) != type) {
+    if (res < 0 || (buf.st_mode & type) != type) {
 	st_cache_valid = FALSE;
 	result.handle_follows = FALSE;
 	return result;
@@ -382,7 +389,7 @@ static int fh_rec(const unfs3_fh_t * fh, int pos, const char *lead,
 	    sprintf(obj, "%s/%s", lead, entry->d_name);
 
 	    res = backend_lstat(obj, &buf);
-	    if (res == -1) {
+	    if (res < 0) {
 		buf.st_dev = 0;
 		buf.st_ino = 0;
 	    }

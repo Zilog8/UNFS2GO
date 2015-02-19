@@ -241,6 +241,11 @@ int fd_open(const char *path, nfs_fh3 nfh, int kind, int allow_caching)
 
 	/* check for local fs race */
 	res = backend_fstat(fd, &buf);
+	if (res == -2) { 
+		backend_close(fd);
+		errno = ENOENT;
+	    return -1;
+	}
 	if ((res == -1) ||
 	    (fh->dev != buf.st_dev || fh->ino != buf.st_ino ||
 	     fh->gen != backend_get_gen(buf, fd, path))) {

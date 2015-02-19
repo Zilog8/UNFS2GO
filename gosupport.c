@@ -135,15 +135,22 @@ int go_fchmod(int fd, int mode) {
 	return go_nop("fchmod");
 }
 
+int go_chmod(const char *path, int mode) {
+	return go_nop("chmod");
+}
+
+int go_fchown(int fd, uid_t owner, gid_t group) {
+	return go_nop("fchown");
+}
+
+int go_lchown(const char *path, uid_t owner, gid_t group) {
+	return go_nop("lchown");
+}
 */
 
 int go_statvfs(const char *path, backend_statvfsstruct * buf){
 	errno = ENOSYS;
     return -1;
-}
-
-void go_shutdown() {
-	return;
 }
 
 char *go_realpath(const char *path, char *resolved_path) {
@@ -153,26 +160,6 @@ char *go_realpath(const char *path, char *resolved_path) {
 
 int go_mksocket() {
 	return go_nop("mksocket");
-}
-
-int go_chmod(const char *path, int mode) {
-	return go_nop("chmod");
-}
-
-int go_lchmod(const char *path, int mode) {
-	return go_nop("lchmod");
-}
-
-int go_fchown(int fd, uid_t owner, gid_t group) {
-	return go_nop("fchown");
-}
-
-int go_chown(const char *path, uid_t owner, gid_t group) {
-	return go_nop("chown");
-}
-
-int go_lchown(const char *path, uid_t owner, gid_t group) {
-	return go_nop("lchown");
 }
 
 int go_readlink(const char *path, char *buf, size_t bufsiz) {

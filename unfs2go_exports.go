@@ -19,8 +19,7 @@ var fddb fdCache //translator for file descriptors
 
 //export go_init
 func go_init() C.int {
-	var tm sync.RWMutex
-	fddb = fdCache{FDlistLock: tm, PathMapA: make(map[string]int), PathMapB: make(map[int]string), FDcounter: 100}
+	fddb = fdCache{FDlistLock: new(sync.RWMutex), PathMapA: make(map[string]int), PathMapB: make(map[int]string), FDcounter: 100}
 	return 0
 }
 
@@ -90,6 +89,7 @@ func go_fstat(fd C.int, buf *C.go_statstruct) C.int {
 	if err == nil {
 		return getStat(pp, gofd, buf)
 	} else {
+		fmt.Println("Error go_fstat: GetPath Failed:", err)
 		return -1
 	}
 }
@@ -360,7 +360,12 @@ func go_fsync(fd C.int) C.int {
 func getStat(pp string, fd int, buf *C.go_statstruct) C.int {
 	fi, err := ns.Stat(pp)
 	if err != nil {
-		//fmt.Println("Error stat: ", pp, " internal stat errored. File/Directory probably doesn't exist")
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "not found") || strings.Contains(lower, "not exist") {
+			fmt.Println("Error stat: not found:", pp)
+			return -2
+		}
+		fmt.Println("Error stat: ", pp, " internal stat errored:", err)
 		return -1
 	}
 	buf.st_dev = C.uint32(1)
@@ -383,7 +388,7 @@ type fdCache struct {
 	PathMapA   map[string]int
 	PathMapB   map[int]string
 	FDcounter  int
-	FDlistLock sync.RWMutex
+	FDlistLock *sync.RWMutex
 }
 
 func (f *fdCache) GetPath(fd int) (string, error) {

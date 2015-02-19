@@ -91,57 +91,6 @@ int get_socket_type(struct svc_req *rqstp)
 }
 
 /*
- * write current pid to a file
- */
-static void create_pid_file(void)
-{
-    char buf[16];
-    int fd, res, len;
-
-    if (!opt_pid_file)
-	return;
-
-    fd = backend_open_create(opt_pid_file, O_RDWR | O_CREAT | O_TRUNC, 0644);
-    if (fd == -1) {
-	fprintf(stderr,  "failed to create pid file `%s'\n", opt_pid_file);
-	return;
-    }
-#if defined(LOCK_EX) && defined(LOCK_NB)
-    res = backend_flock(fd, LOCK_EX | LOCK_NB);
-    if (res == -1) {
-	fprintf(stderr,  "failed to lock pid file `%s'\n", opt_pid_file);
-	backend_close(fd);
-	return;
-    }
-#endif
-
-    sprintf(buf, "%i\n", backend_getpid());
-    len = strlen(buf);
-
-    res = backend_pwrite(fd, buf, len, 0);
-    backend_close(fd);
-    if (res != len) {
-	fprintf(stderr,  "failed to write pid file `%s'\n", opt_pid_file);
-    }
-}
-
-/*
- * remove pid file
- */
-static void remove_pid_file(void)
-{
-    int res;
-
-    if (!opt_pid_file)
-	return;
-
-    res = backend_remove(opt_pid_file);
-    if (res == -1 && errno != ENOENT) {
-	fprintf(stderr,  "failed to remove pid file `%s'\n", opt_pid_file);
-    }
-}
-
-/*
  * signal handler and error exit function
  */
 void daemon_exit(int error)
@@ -182,7 +131,6 @@ void daemon_exit(int error)
     if (opt_detach)
 	closelog();
 
-    remove_pid_file();
     backend_shutdown();
 
     exit(1);

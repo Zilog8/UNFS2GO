@@ -151,7 +151,7 @@ static char *fh_cache_lookup(uint32 dev, uint64 ino)
     if (i != -1) {
 	/* check whether path to <dev,ino> relation still holds */
 	res = backend_lstat(fh_cache[i].path, &buf);
-	if (res == -1) {
+	if (res < 0 ) {
 	    /* object does not exist any more */
 	    fh_cache_inval(i);
 	    return NULL;
@@ -202,7 +202,7 @@ char *fh_decomp(nfs_fh3 fh)
 	    /* Need to fill stat cache */
 	    st_cache_valid = TRUE;
 
-	    if (backend_lstat(result, &st_cache) == -1) {
+	    if (backend_lstat(result, &st_cache) < 0) {
 		/* export point does not exist. This probably means that we
 		   are using autofs and no media is inserted. Fill stat cache 
 		   with dummy information */
