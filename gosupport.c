@@ -47,11 +47,6 @@ int go_closedir(go_DIR * dir) {
 	return 0;
 }
 
-char *go_locate_file(uint32 dev, uint64 ino) {
-	char *path;
-	return path;
-}
-
 int go_utime(const char *path, const struct utimbuf *times) {
     return go_utime_helper(path, times->actime, times->modtime);
 }

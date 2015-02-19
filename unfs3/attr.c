@@ -5,6 +5,7 @@
  * see file LICENSE for license details
  */
  #include <utime.h> //utimbuf
+ #include "error.c"
 
 /*
  * check whether stat_cache is for a regular file

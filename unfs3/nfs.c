@@ -6,6 +6,7 @@
  * see file LICENSE for license details
  */
  #include <utime.h> //utimbuf
+ #include "readdir.c"
  
 /*
  * decompose filehandle and switch user if permitted access
@@ -28,6 +29,126 @@
                           return &result;                       \
                       }                                         \
                   } while (0)
+
+
+					  
+char *go_fgetpath(int);
+
+/*
+ * resolve a filename into a path
+ * cache-using wrapper for fh_decomp_raw
+ */
+char *fh_decomp(nfs_fh3 fh)
+{
+    char *result;
+    unfs3_fh_t *obj = (void *) fh.data.data_val;
+    time_t *last_mtime;
+    uint32 *dir_hash, new_dir_hash;
+
+    if (!nfh_valid(fh)) {
+	st_cache_valid = FALSE;
+	return NULL;
+    }
+
+    /* Does the fsid match some static fsid? */
+    if ((result =
+	 export_point_from_fsid(obj->dev, &last_mtime, &dir_hash)) != NULL) {
+	if (obj->ino == 0x1) {
+	    /* This FH refers to the export point itself */
+	    /* Need to fill stat cache */
+	    st_cache_valid = TRUE;
+
+	    if (backend_lstat(result, &st_cache) < 0) {
+		/* export point does not exist. This probably means that we
+		   are using autofs and no media is inserted. Fill stat cache 
+		   with dummy information */
+		st_cache.st_mode = S_IFDIR | S_IRWXU | S_IRWXG | S_IRWXO;
+		st_cache.st_nlink = 2;
+		st_cache.st_uid = 0;
+		st_cache.st_gid = 0;
+		st_cache.st_rdev = 0;
+		st_cache.st_size = 4096;
+		st_cache.st_blksize = 512;
+		st_cache.st_blocks = 8;
+	    } else {
+		/* Stat was OK, but make sure the values are sane. Supermount 
+		   returns insane values when no media is inserted, for
+		   example. */
+		if (st_cache.st_nlink == 0)
+		    st_cache.st_nlink = 1;
+		if (st_cache.st_size == 0)
+		    st_cache.st_size = 4096;
+		if (st_cache.st_blksize == 0)
+		    st_cache.st_blksize = 512;
+		if (st_cache.st_blocks == 0)
+		    st_cache.st_blocks = 8;
+	    }
+
+	    st_cache.st_dev = obj->dev;
+	    st_cache.st_ino = 0x1;
+
+	    /* It's very important that we get mtime correct, since it's used 
+	       as verifier in READDIR. The generation of mtime is tricky,
+	       because with some filesystems, such as the Linux 2.4 FAT fs,
+	       the mtime value for the mount point is set to *zero* on each
+	       mount. I consider this a bug, but we need to work around it
+	       anyway.
+
+	       We store the last mtime returned. When stat returns a smaller
+	       value than this, we double-check by doing a hash of the names
+	       in the directory. If this hash is different from what we had
+	       earlier, return current time.
+
+	       Note: Since dir_hash is stored in memory, we have introduced a 
+	       little statefulness here. This means that if unfsd is
+	       restarted during two READDIR calls, NFS3ERR_BAD_COOKIE will be 
+	       returned, and the client has to retry the READDIR operation
+	       with a zero cookie */
+
+	    if (st_cache.st_mtime > *last_mtime) {
+		/* stat says our directory has changed */
+		*last_mtime = st_cache.st_mtime;
+	    } else if (*dir_hash != (new_dir_hash = directory_hash(result))) {
+		/* The names in the directory has changed. Return current
+		   time. */
+		st_cache.st_mtime = time(NULL);
+		*last_mtime = st_cache.st_mtime;
+		*dir_hash = new_dir_hash;
+	    } else {
+		/* Hash unchanged. Returned stored mtime. */
+		st_cache.st_mtime = *last_mtime;
+	    }
+
+	    return result;
+	}
+    }
+	
+	//fprintf(stderr, "fh_decomp: lookup for dev: %i, ino: %i\n", obj->dev, obj->ino);
+	result = go_fgetpath(obj->ino);
+	
+	//fprintf(stderr, "fh_decomp: 1st: '%s'\n", result);
+    if (!result) {
+		/* not found, resolve the hard way */
+		result = fh_decomp_raw(obj);
+		//fprintf(stderr, "fh_decomp: 2nd: '%s'\n", result);
+	
+		if (result) {
+			/* add to cache for later use if resolution ok */
+			//fprintf(stderr, "fh_decomp: 4th: '%s'\n", result);
+		} else {
+				/* could not resolve in any way */
+				st_cache_valid = FALSE;
+			}
+    } else {
+		/* found, update st_cache  */	
+		backend_statstruct buf;
+		backend_lstat(result, &buf);
+		st_cache_valid = TRUE;
+		st_cache = buf;		
+	}
+	//fprintf(stderr, "fh_decomp: Final: '%s'\n", result);
+    return result;
+}
 
 /*
  * cat an object name onto a path, checking for illegal input
@@ -204,11 +325,16 @@ LOOKUP3res *nfsproc3_lookup_3_svc(LOOKUP3args * argp, struct svc_req * rqstp)
 		}	else {
 	    if (strcmp(argp->what.name, ".") == 0 ||
 		strcmp(argp->what.name, "..") == 0) {
-		fh = fh_comp_ptr(obj, rqstp, 0);
+				static unfs3_fh_t res;
+				res = fh_comp_raw(obj, rqstp, 0);
+				if (fh_valid(res)) {
+					fh = &res;
+				} else {
+					fh =  NULL;
+				}
 	    } else {
 		gen = backend_get_gen(buf, FD_NONE, obj);
 		fh = fh_extend(argp->what.dir, buf.st_dev, buf.st_ino, gen);
-		fh_cache_add(buf.st_dev, buf.st_ino, obj);
 	    }
 
 	    if (fh) {
@@ -461,7 +587,6 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 		if (res > -1) {
 		//fprintf(stderr,  "NFS3 Create: Successful stat\n");
 	    gen = backend_get_gen(buf, fd, obj);
-	    fh_cache_add(buf.st_dev, buf.st_ino, obj);
 	    backend_close(fd);
 
 	    result.CREATE3res_u.resok.obj =
@@ -494,7 +619,6 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 		    (&buf, argp->how.createhow3_u.verf)) {
 	//fprintf(stderr,  "The verifier matched. Return success\n");
 		    gen = backend_get_gen(buf, fd, obj);
-		    fh_cache_add(buf.st_dev, buf.st_ino, obj);
 		    backend_close(fd);
 
 		    result.CREATE3res_u.resok.obj =

@@ -1,4 +1,7 @@
 
+#ifndef UNFS3_ERROR_C
+#define UNFS3_ERROR_C
+
 /*
  * UNFS3 error translation
  * (C) 2004, Pascal Schmidt
@@ -276,3 +279,5 @@ nfsstat3 join3(nfsstat3 x, nfsstat3 y, nfsstat3 z)
 {
     return (x != NFS3_OK) ? x : join(y, z);
 }
+
+#endif

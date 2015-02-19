@@ -166,7 +166,7 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	return &result;
     }
 
-    fh = fh_comp(buf, rqstp, FH_DIR);
+    fh = fh_comp_raw(buf, rqstp, FH_DIR);
 
     if (!fh_valid(fh)) {
 	fprintf(stderr, "%s attempted to mount non-directory\n",

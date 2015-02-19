@@ -13,7 +13,6 @@
  */
 #define backend_get_gen get_gen
 #define backend_mksocket go_mksocket
-#define backend_locate_file go_locate_file
 #define backend_gen_nonce gen_nonce
 
 /*

@@ -23,6 +23,20 @@ func go_init() C.int {
 	return 0
 }
 
+//export go_fgetpath
+func go_fgetpath(fd C.int) *C.char {
+	gofd := int(fd)
+	retVal := ""
+	path, err := fddb.GetPath(gofd)
+	if err != nil {
+		fmt.Println("Error on go_fgetpath (fd =", gofd, ");", err)
+	} else {
+		retVal = path
+	}
+	fmt.Println("go_fgetpath: Returning '", retVal, "' for fd:", gofd)
+	return  C.CString(retVal)
+}
+
 //export go_readdir_helper
 func go_readdir_helper(dirpath *C.char, entryIndex C.int) *C.char {
 

@@ -14,7 +14,6 @@
 #include "../gosupport.c"
 #include "exports_new.c"
 #include "fh.c"
-#include "fh_cache.c"
 #include "xdr.c"
 #include "attr.c"
 #include "nfs.c"
@@ -639,8 +638,6 @@ static void start(void) {
 	printf("transports created\n");
 	register_nfs_service(udptransp, tcptransp);
     register_mount_service(udptransp, tcptransp);
-	printf("services registered\n");
-	fh_cache_init();
-	printf("caches inited, about to hit main loop\n");
+	printf("services registered, about to hit main loop\n");
 	unfs3_svc_run();
 }
