@@ -91,11 +91,9 @@ int get_socket_type(struct svc_req *rqstp)
  */
 void daemon_exit(int error)
 {
-#ifndef WIN32
     if (error == SIGUSR1) {
 	return;
     }
-#endif				       /* WIN32 */
 
     if (opt_portmapper) {
 	svc_unregister(MOUNTPROG, MOUNTVERS1);

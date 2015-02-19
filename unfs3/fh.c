@@ -401,9 +401,7 @@ static int fh_rec(const unfs3_fh_t * fh, int pos, const char *lead,
 		st_cache_valid = TRUE;
 		st_cache = buf;
 		matches++;
-#ifndef WIN32
 		break;
-#endif
 	    }
 
 	    if (strcmp(entry->d_name, "..") != 0 &&
@@ -431,9 +429,6 @@ static int fh_rec(const unfs3_fh_t * fh, int pos, const char *lead,
 	case 1:
 	    return TRUE;
 	default:
-#ifdef WIN32
-	    fprintf(stderr, "Hash collision detected for file %s!\n", result);
-#endif
 	    return FALSE;
     }
 }

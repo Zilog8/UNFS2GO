@@ -55,9 +55,6 @@ char            *export_point_from_fsid(uint32 fsid, time_t **last_mtime, uint32
 nfsstat3	exports_compat(const char *path, struct svc_req *rqstp);
 nfsstat3	exports_rw(void);
 uint32          fnv1a_32(const char *str, uint32 hval);
-#ifdef WIN32
-uint32          wfnv1a_32(const wchar_t *str, uint32 hval);
-#endif /* WIN32 */
 char            *normpath(const char *path, char *normpath);
 
 #endif

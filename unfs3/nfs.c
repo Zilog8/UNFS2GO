@@ -526,8 +526,6 @@ WRITE3res *nfsproc3_write_3_svc(WRITE3args * argp, struct svc_req * rqstp)
     return &result;
 }
 
-#ifndef WIN32
-
 /*
  * store verifier in atime and mtime 
  */
@@ -551,7 +549,6 @@ static int check_create_verifier(backend_statstruct * buf, createverf3 verf)
 	    && (buf->st_mtime ==
 		(verf[4] | verf[5] << 8 | verf[6] << 16 | verf[7] << 24)));
 }
-#endif				       /* WIN32 */
 
 CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 {
@@ -729,8 +726,6 @@ SYMLINK3res *nfsproc3_symlink_3_svc(SYMLINK3args * argp,
     return &result;
 }
 
-#ifndef WIN32
-
 /*
  * create Unix socket
  */
@@ -753,8 +748,6 @@ static int mksocket(const char *path, mode_t mode)
     }
     return res;
 }
-
-#endif				       /* WIN32 */
 
 /*
  * check and process arguments to MKNOD procedure
