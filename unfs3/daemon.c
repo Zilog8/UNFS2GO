@@ -17,7 +17,6 @@
 #include "fh.c"
 #include "fh_cache.c"
 #include "fd_cache.c"
-#include "user.c"
 #include "xdr.c"
 #include "attr.c"
 #include "nfs.c"
@@ -96,11 +95,6 @@ int get_socket_type(struct svc_req *rqstp)
 void daemon_exit(int error)
 {
 #ifndef WIN32
-    if (error == SIGHUP) {
-	get_squash_ids();
-	return;
-    }
-
     if (error == SIGUSR1) {
 	if (fh_cache_use > 0)
 	    fprintf(stderr, "fh entries %i access %i hit %i miss %i\n",

@@ -475,8 +475,8 @@ mode_t create_mode(sattr3 new)
  */
 nfsstat3 atomic_attr(sattr3 attr)
 {
-    uid_t used_uid = mangle_uid(attr.uid.set_uid3_u.uid);
-    gid_t used_gid = mangle_gid(attr.gid.set_gid3_u.gid);
+    uid_t used_uid = attr.uid.set_uid3_u.uid;
+    gid_t used_gid = attr.gid.set_gid3_u.gid;
 
     if ((attr.uid.set_it == TRUE && used_uid != backend_geteuid()) ||
 	(attr.gid.set_it == TRUE && used_gid != backend_getegid()) ||

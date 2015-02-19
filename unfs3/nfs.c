@@ -12,7 +12,6 @@
  */
 #define PREP(p,f) do {						\
                       unfs3_fh_t *fh = (void *)f.data.data_val; \
-                      switch_to_root();				\
                       p = fh_decomp(f);				\
                       if (exports_options(p, rqstp, NULL, NULL) == -1) { \
                           memset(&result, 0, sizeof(result));	\
@@ -27,7 +26,6 @@
                           result.status = NFS3ERR_STALE;        \
                           return &result;                       \
                       }                                         \
-                      switch_user(rqstp);			\
                   } while (0)
 
 /*
@@ -261,12 +259,6 @@ READ3res *nfsproc3_read_3_svc(READ3args * argp, struct svc_req * rqstp)
     PREP(path, argp->file);
     result.status = is_reg();
 
-    /* handle reading of executables */
-    read_executable(rqstp, st_cache);
-
-    /* handle read of owned files */
-    read_by_owner(rqstp, st_cache);
-
     /* if bigger than rtmax, truncate length */
     if (argp->count > maxdata)
 	argp->count = maxdata;
@@ -320,9 +312,6 @@ WRITE3res *nfsproc3_write_3_svc(WRITE3args * argp, struct svc_req * rqstp)
 
     PREP(path, argp->file);
     result.status = join(is_reg(), exports_rw());
-
-    /* handle write of owned files */
-    write_by_owner(rqstp, st_cache);
 
     if (result.status == NFS3_OK) {
 	/* We allow caching of the fd only for unstable writes. This is to

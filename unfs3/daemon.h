@@ -13,7 +13,6 @@
 #include "fd_cache.h"
 #include "fh.h"
 #include "exports_new.h"
-#include "user.h"
 #include "xdr.h"
 #include "attr.h"
 #include "mount.h"
