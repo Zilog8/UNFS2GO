@@ -23,6 +23,20 @@ func go_init() C.int {
 	return 0
 }
 
+//export go_accept_mount
+func go_accept_mount(addr C.int, path *C.char) C.int {
+	a := uint32(addr)
+	hostaddress := fmt.Sprintf("%d.%d.%d.%d", byte(a), byte(a>>8), byte(a>>16), byte(a>>24))
+	gpath := pathpkg.Clean("/" + C.GoString(path))
+	if strings.EqualFold(hostaddress, "127.0.0.1") { //TODO: Make this configurable
+		fmt.Println("Host allowed to connect:", hostaddress, "path:", gpath)
+		return 1
+	} else {
+		fmt.Println("Host not allowed to connect:", hostaddress, "path:", gpath)
+		return 0
+	}
+}
+
 //export go_fgetpath
 func go_fgetpath(fd C.int) *C.char {
 	gofd := int(fd)
@@ -111,7 +125,7 @@ func go_fstat(fd C.int, buf *C.go_statstruct) C.int {
 func go_lstat(path *C.char, buf *C.go_statstruct) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
 	fd := fddb.GetFD(pp)
-		return getStat(pp, fd, buf)
+	return getStat(pp, fd, buf)
 }
 
 //export go_shutdown
@@ -129,8 +143,8 @@ func go_fchown(fd C.int, owner C.int, group C.int) C.int {
 			return 0
 		}
 	}
-		return -1
-	}
+	return -1
+}
 
 //export go_lchown
 func go_lchown(path *C.char, owner C.int, group C.int) C.int {
@@ -172,8 +186,8 @@ func go_truncate(path *C.char, offset3 C.int) C.int {
 	err := ns.SetAttribute(pp, "size", off)
 	if err != nil {
 		fmt.Println("Error on truncate of", pp, "(size =", off, ")", err)
-	return -1
-}
+		return -1
+	}
 	return 0
 }
 
@@ -226,8 +240,8 @@ func go_ftruncate(fd C.int, offset3 C.int) C.int {
 	err = ns.SetAttribute(pp, "size", off)
 	if err != nil {
 		fmt.Println("Error on ftruncate of", pp, "(fd=", fd, "size =", off, ")", err)
-	return -1
-}
+		return -1
+	}
 	return 0
 }
 
@@ -271,7 +285,7 @@ func go_rmdir_helper(path *C.char) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
 
 	st, err := ns.Stat(pp)
-	
+
 	if err != nil {
 		//fmt.Println("Error removing directory: ", pp, "\n", err)
 		return -1
@@ -303,14 +317,14 @@ func go_mkdir(path *C.char, mode C.int) C.int {
 		return -1
 	}
 	return 0
-	}
+}
 
 //export go_nop
 func go_nop(name *C.char) C.int {
 	pp := C.GoString(name)
 	fmt.Println("Unsupported Command: ", pp)
-		return -1
-	}
+	return -1
+}
 
 //export go_pwrite
 func go_pwrite(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
@@ -335,9 +349,9 @@ func go_pwrite(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
 	copiedBytes, err = ns.WriteFile(pp, cbuf, off)
 	if err != nil {
 		fmt.Println("Error on pwrite of", pp, "(fd =", gofd,
-		") (start =", off, " count =", counted, ")", err)
-	return -1
-}
+			") (start =", off, " count =", counted, ")", err)
+		return -1
+	}
 	return C.int(copiedBytes)
 
 }
@@ -365,9 +379,9 @@ func go_pread(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
 	copiedBytes, err = ns.ReadFile(pp, cbuf, off)
 	if err != nil && !strings.Contains(err.Error(), "EOF") {
 		fmt.Println("Error on pread of", pp, "(fd =", gofd,
-		") (start =", off, " count =", counted, ")", err)
-	return -1
-}
+			") (start =", off, " count =", counted, ")", err)
+		return -1
+	}
 	return C.int(copiedBytes)
 }
 
@@ -378,7 +392,7 @@ func go_fsync(fd C.int) C.int {
 	_, err := fddb.GetPath(gofd)
 	if err != nil {
 		fmt.Println("Error on fsync (fd =", gofd, ");", err)
-	return -1
+		return -1
 	}
 	return 0
 }

@@ -136,11 +136,7 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	return &result;
     }
 
-    if ((exports_opts & OPT_REMOVABLE) && export_point(dpath)) {
-	/* Removable media export point. Do not call realpath; simply copy
-	   path */
-	strncpy(buf, dpath, PATH_MAX);
-    } else if (!backend_realpath(dpath, buf)) {
+    if (!backend_realpath(dpath, buf)) {
 	/* the given path does not exist */
 	fprintf(stderr, "Mount svc: Given path does not exist\n");
 	result.fhs_status = MNT3ERR_NOENT;
@@ -154,12 +150,8 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	return &result;
     }
 
-    if ((exports_options(buf, rqstp) == -1)
-	|| (!(exports_opts & OPT_INSECURE) &&
-	    !IS_SECURE(ntohs(get_port(rqstp))))
-	) {
-	/* not exported to this host or at all, or a password defined and not 
-	   authenticated */
+    if ((exports_options(buf) == -1) || !go_accept_mount((svc_getcaller(rqstp->rq_xprt))->sin_addr, buf)) {
+		/* not exported to this host*/
 	fprintf(stderr, "Mount svc: Not exported to this host at all\n");
 	result.fhs_status = MNT3ERR_ACCES;
 	return &result;

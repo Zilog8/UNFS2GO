@@ -39,7 +39,7 @@ extern int	exports_opts;
 extern const char *export_path;
 
 int exports_parse(char *exportString, char *exportOpts);
-int		exports_options(const char *path, struct svc_req *rqstp);
+int		exports_options(const char *path);
 int             export_point(const char *path);
 char            *export_point_from_fsid(uint32 fsid, time_t **last_mtime, uint32 **dir_hash);
 nfsstat3	exports_rw(void);

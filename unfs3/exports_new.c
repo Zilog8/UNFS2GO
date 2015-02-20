@@ -238,19 +238,6 @@ static void set_hostname(const char *name)
 }	
 
 /*
- * fill current host's address given an IP address
- */
-static void set_ipaddr(const char *addr)
-{
-	strcpy(cur_host.orig, addr);
-	
-	if (!inet_aton(addr, &cur_host.addr))
-		e_error = TRUE;
-	cur_host.mask.s_addr = 0;
-	cur_host.mask.s_addr = ~cur_host.mask.s_addr;
-}
-
-/*
  * compute network bitmask
  */
 static unsigned long make_netmask(int bits) {
@@ -262,29 +249,6 @@ static unsigned long make_netmask(int bits) {
 	for (; i < 32; i++)
 		buf = (buf << 1);
 	return htonl(buf);
-}
-
-/*
- * fill current host's address given IP address and netmask
- */
-static void set_ipnet(char *addr, int new)
-{
-	char *pos, *net;
-
-	pos = strchr(addr, '/');
-	net = pos + 1;
-	*pos = 0;
-	
-	set_ipaddr(addr);
-	
-	if (new)
-		cur_host.mask.s_addr = make_netmask(atoi(net));
-	else
-		if (!inet_aton(net, &cur_host.mask))
-			e_error = TRUE;
-
-	*pos = '/';
-	strcpy(cur_host.orig, addr);
 }
 
 /*
@@ -378,7 +342,6 @@ int exports_parse(char *exportString, char *exportOpts)
 	//TODO: this isn't right at all, but it'll do for now.
 	
 	add_option(exportOpts);
-	set_ipaddr("127.0.0.1");
 	add_host();
 	add_item(exportString);
 		
@@ -409,7 +372,7 @@ const char *export_path = NULL;
 /*
  * given a path, return client's effective options
  */
-int exports_options(const char *path, struct svc_req *rqstp)
+int exports_options(const char *path)
 {
 	e_item *list;
 	struct in_addr remote;
@@ -426,15 +389,13 @@ int exports_options(const char *path, struct svc_req *rqstp)
 		return exports_opts;
 		}
 	
-	remote = get_remote(rqstp);
-
 	/* protect against SIGHUP reloading the list */
 	exports_access = TRUE;
 	
 	list = export_list;
 		/* if path makes sense */
 		if (strlen(list->path) > last_len && strstr(path, list->path) == path) {
-		    e_host* cur_host = find_host(remote, list);
+		    e_host* cur_host = list->hosts;
 			
 			if (cur_host) {
 				exports_opts = cur_host->options;

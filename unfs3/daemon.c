@@ -55,14 +55,6 @@ struct in_addr get_remote(struct svc_req *rqstp)
 }
 
 /*
- * return remote port from svc_req structure
- */
-short get_port(struct svc_req *rqstp)
-{
-    return (svc_getcaller(rqstp->rq_xprt))->sin_port;
-}
-
-/*
  * return the socket type of the request (SOCK_STREAM or SOCK_DGRAM)
  */
 int get_socket_type(struct svc_req *rqstp)
