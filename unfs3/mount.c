@@ -154,8 +154,7 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	return &result;
     }
 
-    if ((exports_options(buf, rqstp, &password, NULL) == -1)
-	|| (!authenticated && password[0])
+    if ((exports_options(buf, rqstp) == -1)
 	|| (!(exports_opts & OPT_INSECURE) &&
 	    !IS_SECURE(ntohs(get_port(rqstp))))
 	) {
@@ -166,7 +165,7 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	return &result;
     }
 
-    fh = fh_comp_raw(buf, rqstp, FH_DIR);
+    fh = fh_comp_raw(buf, FH_DIR);
 
     if (!fh_valid(fh)) {
 	fprintf(stderr, "%s attempted to mount non-directory\n",

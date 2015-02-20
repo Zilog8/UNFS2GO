@@ -38,21 +38,17 @@ typedef struct {
 #define FH_ANY 0
 #define FH_DIR 1
 
-#define FD_NONE (-1)			/* used for get_gen */
-
 extern int st_cache_valid;		/* stat value is valid */
 extern backend_statstruct st_cache;	/* cached stat value */
-
-uint32 get_gen(backend_statstruct obuf, int fd, const char *path);
 
 int nfh_valid(nfs_fh3 fh);
 int fh_valid(unfs3_fh_t fh);
 
-unfs3_fh_t fh_comp_raw(const char *path, struct svc_req *rqstp, int need_dir);
+unfs3_fh_t fh_comp_raw(const char *path, int need_dir);
 u_int fh_length(const unfs3_fh_t *fh);
 
-unfs3_fh_t *fh_extend(nfs_fh3 fh, uint32 dev, uint64 ino, uint32 gen);
-post_op_fh3 fh_extend_post(nfs_fh3 fh, uint32 dev, uint64 ino, uint32 gen);
+unfs3_fh_t *fh_extend(nfs_fh3 fh, uint32 dev, uint64 ino);
+post_op_fh3 fh_extend_post(nfs_fh3 fh, uint32 dev, uint64 ino);
 post_op_fh3 fh_extend_type(nfs_fh3 fh, const char *path, unsigned int type);
 
 char *fh_decomp_raw(const unfs3_fh_t *fh);

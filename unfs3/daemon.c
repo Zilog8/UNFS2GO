@@ -625,17 +625,17 @@ void change_readdir_cookie(void)
 }
 
 static void start(void) {
-	printf("start\n");
+	//printf("start\n");
 	register SVCXPRT *tcptransp = NULL, *udptransp = NULL;
     regenerate_write_verifier();
     backend_init();
-	printf("backend inited\n");
+	//printf("backend inited\n");
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	udptransp = create_udp_transport(2049);
     tcptransp = create_tcp_transport(2049);
-	printf("transports created\n");
+	//printf("transports created\n");
 	register_nfs_service(udptransp, tcptransp);
     register_mount_service(udptransp, tcptransp);
-	printf("services registered, about to hit main loop\n");
+	//printf("services registered, about to hit main loop\n");
 	unfs3_svc_run();
 }

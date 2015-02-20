@@ -11,7 +11,6 @@
 /*
  * unfs3 functions
  */
-#define backend_get_gen get_gen
 #define backend_mksocket go_mksocket
 #define backend_gen_nonce gen_nonce
 

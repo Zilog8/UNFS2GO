@@ -26,15 +26,14 @@ func go_init() C.int {
 //export go_fgetpath
 func go_fgetpath(fd C.int) *C.char {
 	gofd := int(fd)
-	retVal := ""
 	path, err := fddb.GetPath(gofd)
 	if err != nil {
-		fmt.Println("Error on go_fgetpath (fd =", gofd, ");", err)
+		fmt.Println("Error on go_fgetpath (fd =", gofd, " of ", fddb.FDcounter, ");", err)
+		return nil
 	} else {
-		retVal = path
+		//fmt.Println("go_fgetpath: Returning '", path, "' for fd:", gofd)
+		return C.CString(path)
 	}
-	fmt.Println("go_fgetpath: Returning '", retVal, "' for fd:", gofd)
-	return  C.CString(retVal)
 }
 
 //export go_readdir_helper

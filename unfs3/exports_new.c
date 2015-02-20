@@ -76,7 +76,7 @@ static void clear_item(void)
 	memset(&ne_item, 0, sizeof(struct exportnode));
 }
 
-/*
+/* 
  * add current host to current export item
  */
 static void add_host(void)
@@ -99,22 +99,10 @@ static void add_host(void)
 	ne_new->gr_name = new->orig;
 
 	/* internal list */
-	if (cur_item.hosts) {
-		iter = cur_item.hosts;
-		while (iter->next)
-			iter = (e_host *) iter->next;
-		iter->next = (struct e_host *) new;
-	} else
-		cur_item.hosts = new;
+	cur_item.hosts = new;
 
 	/* matching mount protocol list */
-	if (ne_item.ex_groups) {
-		ne_iter = ne_item.ex_groups;
-		while (ne_iter->gr_next)
-			ne_iter = (groups) ne_iter->gr_next;
-		ne_iter->gr_next = ne_new;
-	} else
-		ne_item.ex_groups = ne_new;
+	ne_item.ex_groups = ne_new;
 	
 	clear_host();
 }
@@ -175,11 +163,8 @@ static void add_item(const char *path)
 
 	/* Loop over all hosts and check if marked as removable. */
 	host = cur_item.hosts;
-	while (host) {
-		if (!(host->options & OPT_REMOVABLE))
-			removable_for_all = 0;
-		host = (e_host *) host->next;
-	}
+	if (!(host->options & OPT_REMOVABLE))
+		removable_for_all = 0;
 
 	if (removable_for_all) {
 		/* If marked as removable for all hosts, don't try
@@ -218,22 +203,10 @@ static void add_item(const char *path)
 	ne_new->ex_dir = new->orig;
 
 	/* internal list */
-	if (e_list) {
-		iter = e_list;
-		while (iter->next)
-			iter = (e_item *) iter->next;
-		iter->next = (struct e_item *) new;
-	} else
-		e_list = new;
+	e_list = new;
 
 	/* matching mount protocol list */
-	if (ne_list) {
-		ne_iter = ne_list;
-		while (ne_iter->ex_next)
-			ne_iter = (exports) ne_iter->ex_next;
-		ne_iter->ex_next = ne_new;
-	} else
-		ne_list = ne_new;
+	ne_list = ne_new;
 		
 	clear_item();
 }
@@ -346,16 +319,7 @@ static void add_option(const char *opt)
 
 static void add_option_with_value(const char *opt, const char *val)
 {
-    if (strcmp(opt,"password") == 0) {
-	if (strlen(val) > PASSWORD_MAXLEN) {
-	    fprintf(stderr,  "Warning: password for export %s truncated to 64 chars\n",
-		   cur_item.orig);
-	}
-	strncpy(cur_host.password, val, sizeof(password));
-	cur_host.password[PASSWORD_MAXLEN] = '\0';
-	/* Calculate hash */
-	cur_host.password_hash = fnv1a_32(cur_host.password, 0);
-    } else if (strcmp(opt,"anonuid") == 0) {
+    if (strcmp(opt,"anonuid") == 0) {
     	cur_host.anonuid = atoi(val);
     } else if (strcmp(opt,"anongid") == 0) {
     	cur_host.anongid = atoi(val);
@@ -373,67 +337,6 @@ static volatile int exports_access = FALSE;
 exports exports_nfslist = NULL;
 
 /*
- * free NFS groups list
- */
-void free_nfsgroups(groups group)
-{
-	groups list, next;
-	
-	list = group;
-	while (list) {
-		next = (groups) list->gr_next;
-		free(list);
-		list = next;
-	}
-}
-
-/*
- * free NFS exports list
- */
-void free_nfslist(exports elist)
-{
-	exports list, next;
-
-	list = elist;
-	while(list) {
-		next = (exports) list->ex_next;
-		free_nfsgroups(list->ex_groups);
-		free(list);
-		list = next;
-	}
-}
-
-/*
- * free list of host structures
- */
-static void free_hosts(e_item *item)
-{
-	e_host *host, *cur;
-	
-	host = item->hosts;
-	while (host) {
-		cur = host;
-		host = (e_host *) host->next;
-		free(cur);
-	}
-}
-
-/*
- * free list of export items
- */
-static void free_list(e_item *item)
-{
-	e_item *cur;
-	
-	while (item) {
-		free_hosts(item);
-		cur = item;
-		item = (e_item *) item->next;
-		free(cur);
-	}
-}
-
-/*
  * print out the current exports list (for debugging)
  */
 void print_list(void)
@@ -445,20 +348,14 @@ void print_list(void)
 	
 	item = e_list;
 	fprintf(stderr, "Print list\n");
-	while (item) {
-		fprintf(stderr, "Item: path %s orig %s\n", item->path, item->orig);
-		host = item->hosts;
-		while (host) {
-			/* inet_ntoa returns static buffer */
-			strcpy(addrbuf, inet_ntoa(host->addr));
-			strcpy(maskbuf, inet_ntoa(host->mask));
-			fprintf(stderr, "%s: ip %s mask %s options %i\n",
-		       		item->path, addrbuf, maskbuf,
-		       		host->options);
-		       	host = (e_host *) host->next;
-		}
-		item = (e_item *) item->next;
-	}
+	fprintf(stderr, "Item: path %s orig %s\n", item->path, item->orig);
+	host = item->hosts;
+	/* inet_ntoa returns static buffer */
+	strcpy(addrbuf, inet_ntoa(host->addr));
+	strcpy(maskbuf, inet_ntoa(host->mask));
+	fprintf(stderr, "%s: ip %s mask %s options %i\n",
+			item->path, addrbuf, maskbuf,
+			host->options);
 }
 
 /*
@@ -481,15 +378,12 @@ int exports_parse(char *exportString, char *exportOpts)
 	//TODO: this isn't right at all, but it'll do for now.
 	
 	add_option(exportOpts);
+	set_ipaddr("127.0.0.1");
 	add_host();
 	add_item(exportString);
+		
+	print_list();
 	
-	/* print out new list for debugging */
-	if (!opt_detach)
-		print_list();
-	
-	free_list(export_list);
-	free_nfslist(exports_nfslist);
 	export_list = e_list;
 	exports_nfslist = ne_list;
 	return TRUE;
@@ -498,21 +392,12 @@ int exports_parse(char *exportString, char *exportOpts)
 /*
  * find a given host inside a host list, return options
  */
-static e_host* find_host(struct in_addr remote, e_item *item,
-		     char **password, uint32 *password_hash)
+static e_host* find_host(struct in_addr remote, e_item *item)
 {
 	e_host *host;
-
 	host = item->hosts;
-	while (host) {
-		if ((remote.s_addr & host->mask.s_addr) == host->addr.s_addr) {
-			if (password != NULL) 
-				*password = host->password;
-			if (password_hash != NULL)
-     			        *password_hash = host->password_hash;
-			return host;
-		}
-		host = (e_host *) host->next;
+	if ((remote.s_addr & host->mask.s_addr) == host->addr.s_addr) {
+		return host;
 	}
 	return NULL;
 }
@@ -520,14 +405,11 @@ static e_host* find_host(struct in_addr remote, e_item *item,
 /* options cache */
 int exports_opts = -1;
 const char *export_path = NULL; 
-uint32 export_fsid = 0;
-uint32 export_password_hash = 0;
 
 /*
  * given a path, return client's effective options
  */
-int exports_options(const char *path, struct svc_req *rqstp,
-			char **password, uint32 *fsid)
+int exports_options(const char *path, struct svc_req *rqstp)
 {
 	e_item *list;
 	struct in_addr remote;
@@ -535,7 +417,6 @@ int exports_options(const char *path, struct svc_req *rqstp,
 	
 	exports_opts = -1;
 	export_path = NULL;
-	export_fsid = 0;
 	last_anonuid = ANON_NOTSPECIAL;
 	last_anongid = ANON_NOTSPECIAL;
 
@@ -551,26 +432,19 @@ int exports_options(const char *path, struct svc_req *rqstp,
 	exports_access = TRUE;
 	
 	list = export_list;
-	while (list) {
-		/* longest matching prefix wins */
-		if (strlen(list->path) > last_len    &&
-		    strstr(path, list->path) == path) {
-		    e_host* cur_host = find_host(remote, list, password, &export_password_hash);
+		/* if path makes sense */
+		if (strlen(list->path) > last_len && strstr(path, list->path) == path) {
+		    e_host* cur_host = find_host(remote, list);
 			
-			if (fsid != NULL) {
-				*fsid = list->fsid;
-				}
 			if (cur_host) {
 				exports_opts = cur_host->options;
 				export_path = list->path;
-				export_fsid = list->fsid;
 				last_len = strlen(list->path);
 				last_anonuid = cur_host->anonuid;
 				last_anongid = cur_host->anongid;
 			}
 		}
-		list = (e_item *) list->next;
-	}
+		
 	exports_access = FALSE;
 	return exports_opts;
 }
@@ -580,68 +454,14 @@ int exports_options(const char *path, struct svc_req *rqstp,
  */
 int export_point(const char *path)
 {
-        e_item *list;
-
 	exports_access = TRUE;
-	list = export_list;
 
-	while (list) {
-	    if (strcmp(path, list->path) == 0) {
+	if (strcmp(path, export_list->path) == 0) {
 		exports_access = FALSE;
 		return TRUE;
-	    }
-	    list = (e_item *) list->next;
 	}
 	exports_access = FALSE;
 	return FALSE;
-}
-
-/*
- * return exported path from static fsid
- */
-char *export_point_from_fsid(uint32 fsid, time_t **last_mtime, uint32 **dir_hash)
-{
-    e_item *list;
-    
-    exports_access = TRUE;
-    list = export_list;
-    
-    while (list) {
-	if (list->fsid == fsid) {
-	    if (last_mtime != NULL)
-		*last_mtime = &list->last_mtime;
-	    if (dir_hash != NULL)
-		*dir_hash = &list->dir_hash;
-	    exports_access = FALSE;
-	    return list->path;
-	}
-	list = (e_item *) list->next;
-    }
-    exports_access = FALSE;
-    return NULL;
-}
-
-
-/*
- * check whether export options of a path match with last set of options
- */
-nfsstat3 exports_compat(const char *path, struct svc_req *rqstp)
-{
-	int prev;
-	uint32 prev_anonuid, prev_anongid;
-	
-	prev = exports_opts;
-	prev_anonuid = last_anonuid;
-	prev_anongid = last_anongid;
-	
-	if (exports_options(path, rqstp, NULL, NULL) == prev &&
-	    last_anonuid == prev_anonuid &&
-	    last_anongid == prev_anongid)
-		return NFS3_OK;
-	else if (exports_opts == -1)
-		return NFS3ERR_ACCES;
-	else
-		return NFS3ERR_XDEV;
 }
 
 /*

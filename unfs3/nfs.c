@@ -9,32 +9,6 @@
  #include "readdir.c"
  
 /*
- * decompose filehandle and switch user if permitted access
- * otherwise zero result structure and return with error status
- */
-#define PREP(p,f) do {						\
-                      unfs3_fh_t *fh = (void *)f.data.data_val; \
-                      p = fh_decomp(f);				\
-                      if (exports_options(p, rqstp, NULL, NULL) == -1) { \
-                          memset(&result, 0, sizeof(result));	\
-                          if (p)				\
-                              result.status = NFS3ERR_ACCES;	\
-                          else					\
-                              result.status = NFS3ERR_STALE;	\
-                          return &result;			\
-                      }						\
-                      if (fh->pwhash != export_password_hash) { \
-                          memset(&result, 0, sizeof(result));	\
-                          result.status = NFS3ERR_STALE;        \
-                          return &result;                       \
-                      }                                         \
-                  } while (0)
-
-
-					  
-char *go_fgetpath(int);
-
-/*
  * resolve a filename into a path
  * cache-using wrapper for fh_decomp_raw
  */
@@ -50,79 +24,6 @@ char *fh_decomp(nfs_fh3 fh)
 	return NULL;
     }
 
-    /* Does the fsid match some static fsid? */
-    if ((result =
-	 export_point_from_fsid(obj->dev, &last_mtime, &dir_hash)) != NULL) {
-	if (obj->ino == 0x1) {
-	    /* This FH refers to the export point itself */
-	    /* Need to fill stat cache */
-	    st_cache_valid = TRUE;
-
-	    if (backend_lstat(result, &st_cache) < 0) {
-		/* export point does not exist. This probably means that we
-		   are using autofs and no media is inserted. Fill stat cache 
-		   with dummy information */
-		st_cache.st_mode = S_IFDIR | S_IRWXU | S_IRWXG | S_IRWXO;
-		st_cache.st_nlink = 2;
-		st_cache.st_uid = 0;
-		st_cache.st_gid = 0;
-		st_cache.st_rdev = 0;
-		st_cache.st_size = 4096;
-		st_cache.st_blksize = 512;
-		st_cache.st_blocks = 8;
-	    } else {
-		/* Stat was OK, but make sure the values are sane. Supermount 
-		   returns insane values when no media is inserted, for
-		   example. */
-		if (st_cache.st_nlink == 0)
-		    st_cache.st_nlink = 1;
-		if (st_cache.st_size == 0)
-		    st_cache.st_size = 4096;
-		if (st_cache.st_blksize == 0)
-		    st_cache.st_blksize = 512;
-		if (st_cache.st_blocks == 0)
-		    st_cache.st_blocks = 8;
-	    }
-
-	    st_cache.st_dev = obj->dev;
-	    st_cache.st_ino = 0x1;
-
-	    /* It's very important that we get mtime correct, since it's used 
-	       as verifier in READDIR. The generation of mtime is tricky,
-	       because with some filesystems, such as the Linux 2.4 FAT fs,
-	       the mtime value for the mount point is set to *zero* on each
-	       mount. I consider this a bug, but we need to work around it
-	       anyway.
-
-	       We store the last mtime returned. When stat returns a smaller
-	       value than this, we double-check by doing a hash of the names
-	       in the directory. If this hash is different from what we had
-	       earlier, return current time.
-
-	       Note: Since dir_hash is stored in memory, we have introduced a 
-	       little statefulness here. This means that if unfsd is
-	       restarted during two READDIR calls, NFS3ERR_BAD_COOKIE will be 
-	       returned, and the client has to retry the READDIR operation
-	       with a zero cookie */
-
-	    if (st_cache.st_mtime > *last_mtime) {
-		/* stat says our directory has changed */
-		*last_mtime = st_cache.st_mtime;
-	    } else if (*dir_hash != (new_dir_hash = directory_hash(result))) {
-		/* The names in the directory has changed. Return current
-		   time. */
-		st_cache.st_mtime = time(NULL);
-		*last_mtime = st_cache.st_mtime;
-		*dir_hash = new_dir_hash;
-	    } else {
-		/* Hash unchanged. Returned stored mtime. */
-		st_cache.st_mtime = *last_mtime;
-	    }
-
-	    return result;
-	}
-    }
-	
 	//fprintf(stderr, "fh_decomp: lookup for dev: %i, ino: %i\n", obj->dev, obj->ino);
 	result = go_fgetpath(obj->ino);
 	
@@ -211,7 +112,7 @@ GETATTR3res *nfsproc3_getattr_3_svc(GETATTR3args * argp,
     char *path;
     post_op_attr post;
 
-    PREP(path, argp->object);
+    path = fh_decomp(argp->object);
     post = get_post_cached(rqstp);
 
     result.status = NFS3_OK;
@@ -246,8 +147,7 @@ int fd_open(const char *path, nfs_fh3 nfh, int kind)
 	    return -1;
 	}
 	if ((res == -1) ||
-	    (fh->dev != buf.st_dev || fh->ino != buf.st_ino ||
-	     fh->gen != backend_get_gen(buf, fd, path))) {
+	    (fh->dev != buf.st_dev || fh->ino != buf.st_ino)) {
 	    /* 
 	     * local fs changed meaning of path between
 	     * calling NFS operation doing fh_decomp and
@@ -288,7 +188,7 @@ SETATTR3res *nfsproc3_setattr_3_svc(SETATTR3args * argp,
     pre_op_attr pre;
     char *path;
 
-    PREP(path, argp->object);
+    path = fh_decomp(argp->object);
     pre = get_pre_cached();
     result.status = join(in_sync(argp->guard, pre), exports_rw());
 
@@ -312,7 +212,7 @@ LOOKUP3res *nfsproc3_lookup_3_svc(LOOKUP3args * argp, struct svc_req * rqstp)
     int res;
     uint32 gen;
 
-    PREP(path, argp->what.dir);
+    path = fh_decomp(argp->what.dir);
     result.status = cat_name(path, argp->what.name, obj);
 
     if (result.status == NFS3_OK) {
@@ -326,15 +226,14 @@ LOOKUP3res *nfsproc3_lookup_3_svc(LOOKUP3args * argp, struct svc_req * rqstp)
 	    if (strcmp(argp->what.name, ".") == 0 ||
 		strcmp(argp->what.name, "..") == 0) {
 				static unfs3_fh_t res;
-				res = fh_comp_raw(obj, rqstp, 0);
+				res = fh_comp_raw(obj, 0);
 				if (fh_valid(res)) {
 					fh = &res;
 				} else {
 					fh =  NULL;
 				}
 	    } else {
-		gen = backend_get_gen(buf, FD_NONE, obj);
-		fh = fh_extend(argp->what.dir, buf.st_dev, buf.st_ino, gen);
+		fh = fh_extend(argp->what.dir, buf.st_dev, buf.st_ino);
 	    }
 
 	    if (fh) {
@@ -362,7 +261,7 @@ ACCESS3res *nfsproc3_access_3_svc(ACCESS3args * argp, struct svc_req * rqstp)
     post_op_attr post;
     int newaccess = 0;
 
-    PREP(path, argp->object);
+    path = fh_decomp(argp->object);
     post = get_post_cached(rqstp);
 
     /* allow everything */
@@ -392,7 +291,7 @@ READLINK3res *nfsproc3_readlink_3_svc(READLINK3args * argp,
     static char buf[NFS_MAXPATHLEN];
     int res;
 
-    PREP(path, argp->symlink);
+    path = fh_decomp(argp->symlink);
 
     res = backend_readlink(path, buf, NFS_MAXPATHLEN - 1);
     if (res == -1)
@@ -425,7 +324,7 @@ READ3res *nfsproc3_read_3_svc(READ3args * argp, struct svc_req * rqstp)
     else
 	maxdata = NFS_MAXDATA_UDP;
 
-    PREP(path, argp->file);
+    path = fh_decomp(argp->file);
     result.status = is_reg();
 
     /* if bigger than rtmax, truncate length */
@@ -479,7 +378,7 @@ WRITE3res *nfsproc3_write_3_svc(WRITE3args * argp, struct svc_req * rqstp)
     char *path;
     int fd, res, res_close;
 
-    PREP(path, argp->file);
+    path = fh_decomp(argp->file);
     result.status = join(is_reg(), exports_rw());
 
     if (result.status == NFS3_OK) {
@@ -561,7 +460,7 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
     uint32 gen;
     int flags = O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK;
 
-    PREP(path, argp->where.dir);
+    path = fh_decomp(argp->where.dir);
     result.status = join(cat_name(path, argp->where.name, obj), exports_rw());
 
     /* GUARDED and EXCLUSIVE maps to Unix exclusive create */
@@ -583,11 +482,10 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 	res = backend_fstat(fd, &buf);
 		if (res > -1) {
 		//fprintf(stderr,  "NFS3 Create: Successful stat\n");
-	    gen = backend_get_gen(buf, fd, obj);
 	    backend_close(fd);
 
 	    result.CREATE3res_u.resok.obj =
-		fh_extend_post(argp->where.dir, buf.st_dev, buf.st_ino, gen);
+		fh_extend_post(argp->where.dir, buf.st_dev, buf.st_ino);
 	    result.CREATE3res_u.resok.obj_attributes =
 		get_post_buf(buf, rqstp);
 		} else if (res==-2) { 
@@ -615,12 +513,10 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 		if (backend_check_create_verifier
 		    (&buf, argp->how.createhow3_u.verf)) {
 	//fprintf(stderr,  "The verifier matched. Return success\n");
-		    gen = backend_get_gen(buf, fd, obj);
 		    backend_close(fd);
 
 		    result.CREATE3res_u.resok.obj =
-			fh_extend_post(argp->where.dir, buf.st_dev,
-				       buf.st_ino, gen);
+			fh_extend_post(argp->where.dir, buf.st_dev, buf.st_ino);
 		    result.CREATE3res_u.resok.obj_attributes =
 			get_post_buf(buf, rqstp);
 		} else {
@@ -651,7 +547,7 @@ MKDIR3res *nfsproc3_mkdir_3_svc(MKDIR3args * argp, struct svc_req * rqstp)
     char obj[NFS_MAXPATHLEN];
     int res;
 
-    PREP(path, argp->where.dir);
+    path = fh_decomp(argp->where.dir);
     pre = get_pre_cached();
     result.status =
 	join3(cat_name(path, argp->where.name, obj),
@@ -688,7 +584,7 @@ SYMLINK3res *nfsproc3_symlink_3_svc(SYMLINK3args * argp,
     int res;
     mode_t new_mode;
 
-    PREP(path, argp->where.dir);
+    path = fh_decomp(argp->where.dir);
     pre = get_pre_cached();
     result.status =
 	join3(cat_name(path, argp->where.name, obj),
@@ -806,7 +702,7 @@ MKNOD3res *nfsproc3_mknod_3_svc(MKNOD3args * argp, struct svc_req * rqstp)
     mode_t new_mode = 0;
     dev_t dev = 0;
 
-    PREP(path, argp->where.dir);
+    path = fh_decomp(argp->where.dir);
     pre = get_pre_cached();
     result.status =
 	join3(cat_name(path, argp->where.name, obj),
@@ -846,7 +742,7 @@ REMOVE3res *nfsproc3_remove_3_svc(REMOVE3args * argp, struct svc_req * rqstp)
     char obj[NFS_MAXPATHLEN];
     int res;
 
-    PREP(path, argp->object.dir);
+    path = fh_decomp(argp->object.dir);
     result.status =
 	join(cat_name(path, argp->object.name, obj), exports_rw());
 
@@ -871,7 +767,7 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
     char obj[NFS_MAXPATHLEN];
     int res;
 
-    PREP(path, argp->object.dir);
+    path = fh_decomp(argp->object.dir);
     result.status =
 	join(cat_name(path, argp->object.name, obj), exports_rw());
 
@@ -900,7 +796,7 @@ RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
     post_op_attr post;
     int res;
 
-    PREP(from, argp->from.dir);
+    from = fh_decomp(argp->from.dir);
     pre = get_pre_cached();
     result.status =
 	join(cat_name(from, argp->from.name, from_obj), exports_rw());
@@ -909,8 +805,7 @@ RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
 
     if (result.status == NFS3_OK) {
 	result.status =
-	    join(cat_name(to, argp->to.name, to_obj),
-		 exports_compat(to, rqstp));
+	    join(cat_name(to, argp->to.name, to_obj), NFS3_OK);
 
 	if (result.status == NFS3_OK) {
 	    change_readdir_cookie();
@@ -942,14 +837,14 @@ LINK3res *nfsproc3_link_3_svc(LINK3args * argp, struct svc_req * rqstp)
     char obj[NFS_MAXPATHLEN];
     int res;
 
-    PREP(path, argp->link.dir);
+    path = fh_decomp(argp->link.dir);
     pre = get_pre_cached();
     result.status = join(cat_name(path, argp->link.name, obj), exports_rw());
 
     old = fh_decomp(argp->file);
 
     if (old && result.status == NFS3_OK) {
-	result.status = exports_compat(old, rqstp);
+	result.status = NFS3_OK;
 
 	if (result.status == NFS3_OK) {
 	    res = backend_link(old, obj);
@@ -975,7 +870,7 @@ READDIR3res *nfsproc3_readdir_3_svc(READDIR3args * argp,
     static READDIR3res result;
     char *path;
 
-    PREP(path, argp->dir);
+    path = fh_decomp(argp->dir);
 
     result = read_dir(path, argp->cookie, argp->cookieverf, argp->count);
     result.READDIR3res_u.resok.dir_attributes = get_post_stat(path, rqstp);
@@ -1006,7 +901,7 @@ FSSTAT3res *nfsproc3_fsstat_3_svc(FSSTAT3args * argp, struct svc_req * rqstp)
     backend_statvfsstruct buf;
     int res;
 
-    PREP(path, argp->fsroot);
+    path = fh_decomp(argp->fsroot);
 
     /* overlaps with resfail */
     result.FSSTAT3res_u.resok.obj_attributes = get_post_cached(rqstp);
@@ -1056,7 +951,7 @@ FSINFO3res *nfsproc3_fsinfo_3_svc(FSINFO3args * argp, struct svc_req * rqstp)
     else
 	maxdata = NFS_MAXDATA_UDP;
 
-    PREP(path, argp->fsroot);
+    path = fh_decomp(argp->fsroot);
 
     result.FSINFO3res_u.resok.obj_attributes = get_post_cached(rqstp);
 
@@ -1082,7 +977,7 @@ PATHCONF3res *nfsproc3_pathconf_3_svc(PATHCONF3args * argp,
     static PATHCONF3res result;
     char *path;
 
-    PREP(path, argp->object);
+    path = fh_decomp(argp->object);
 
     result.PATHCONF3res_u.resok.obj_attributes = get_post_cached(rqstp);
 
@@ -1106,7 +1001,7 @@ COMMIT3res *nfsproc3_commit_3_svc(COMMIT3args * argp, struct svc_req * rqstp)
     int res1;
     int res2;
 
-    PREP(path, argp->file);
+    path = fh_decomp(argp->file);
     result.status = join(is_reg(), exports_rw());
 
     if (result.status == NFS3_OK) {

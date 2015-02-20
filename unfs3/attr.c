@@ -165,7 +165,7 @@ post_op_attr get_post_buf(backend_statstruct buf, struct svc_req * req)
 
 	if (backend_lstat(export_path, &epbuf) > -1 &&
 	    buf.st_dev == epbuf.st_dev) {
-	    result.post_op_attr_u.attributes.fsid = export_fsid;
+	    result.post_op_attr_u.attributes.fsid = 0;
 	}
     }
 
@@ -392,8 +392,7 @@ nfsstat3 set_attr(const char *path, nfs_fh3 nfh, sattr3 new)
     }
 
     /* check local fs race */
-    if (fh->dev != buf.st_dev || fh->ino != buf.st_ino ||
-	fh->gen != backend_get_gen(buf, fd, path)) {
+    if (fh->dev != buf.st_dev || fh->ino != buf.st_ino) {
 	backend_close(fd);
 	return NFS3ERR_STALE;
     }
