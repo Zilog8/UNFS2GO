@@ -12,11 +12,11 @@
  *
  * fh_decomp must be called before to fill the stat cache
  */
-nfsstat3 is_reg(void)
+nfsstat3 is_reg(const char *path)
 {
-    if (!st_cache_valid)
-	return NFS3ERR_STALE;
-    else if (S_ISREG(st_cache.st_mode))
+	backend_statstruct buf;
+	backend_lstat(path, &buf);
+    if (S_ISREG(buf.st_mode))
 	return NFS3_OK;
     else
 	return NFS3ERR_INVAL;
@@ -58,25 +58,37 @@ static post_op_attr error_attr = { FALSE };
 #endif
 
 /*
- * return pre-operation attributes
- *
- * fh_decomp must be called before to fill the stat cache
+ * return post-operation attributes
  */
-pre_op_attr get_pre_cached(void)
+post_op_attr get_post(const char *path, struct svc_req * req)
+{
+	backend_statstruct buf;
+    if (backend_lstat(path, &buf) < 0) {
+		return error_attr;
+    }
+	
+    return get_post_buf(buf, req);
+}
+
+/*
+ * return pre-operation attributes
+ */
+pre_op_attr get_pre(const char *path)
 {
     pre_op_attr result;
-
-    if (!st_cache_valid) {
+	backend_statstruct buf;
+	
+    if (backend_lstat(path, &buf) < 0) {
 	result.attributes_follow = FALSE;
 	return result;
     }
 
     result.attributes_follow = TRUE;
 
-    result.pre_op_attr_u.attributes.size = st_cache.st_size;
-    result.pre_op_attr_u.attributes.mtime.seconds = st_cache.st_mtime;
+    result.pre_op_attr_u.attributes.size = buf.st_size;
+    result.pre_op_attr_u.attributes.mtime.seconds = buf.st_mtime;
     result.pre_op_attr_u.attributes.mtime.nseconds = 0;
-    result.pre_op_attr_u.attributes.ctime.seconds = st_cache.st_ctime;
+    result.pre_op_attr_u.attributes.ctime.seconds = buf.st_ctime;
     result.pre_op_attr_u.attributes.ctime.nseconds = 0;
 
     return result;
@@ -217,27 +229,6 @@ post_op_attr get_post_attr(const char *path, nfs_fh3 nfh,
     unfs3_fh_t *fh = (void *) nfh.data.data_val;
 
     return get_post_ll(path, fh->dev, fh->ino, req);
-}
-
-/*
- * return post-operation attributes, using stat cache for old dev/ino
- */
-post_op_attr get_post_stat(const char *path, struct svc_req * req)
-{
-    return get_post_ll(path, st_cache.st_dev, st_cache.st_ino, req);
-}
-
-/*
- * return post-operation attributes using stat cache
- *
- * fd_decomp must be called before to fill the stat cache
- */
-post_op_attr get_post_cached(struct svc_req * req)
-{
-    if (!st_cache_valid)
-	return error_attr;
-
-    return get_post_buf(st_cache, req);
 }
 
 /*

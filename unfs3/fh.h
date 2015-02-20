@@ -38,9 +38,6 @@ typedef struct {
 #define FH_ANY 0
 #define FH_DIR 1
 
-extern int st_cache_valid;		/* stat value is valid */
-extern backend_statstruct st_cache;	/* cached stat value */
-
 int nfh_valid(nfs_fh3 fh);
 int fh_valid(unfs3_fh_t fh);
 

@@ -20,8 +20,7 @@ char *fh_decomp(nfs_fh3 fh)
     uint32 *dir_hash, new_dir_hash;
 
     if (!nfh_valid(fh)) {
-	st_cache_valid = FALSE;
-	return NULL;
+		return NULL;
     }
 
 	//fprintf(stderr, "fh_decomp: lookup for dev: %i, ino: %i\n", obj->dev, obj->ino);
@@ -32,21 +31,8 @@ char *fh_decomp(nfs_fh3 fh)
 		/* not found, resolve the hard way */
 		result = fh_decomp_raw(obj);
 		//fprintf(stderr, "fh_decomp: 2nd: '%s'\n", result);
+    }
 	
-		if (result) {
-			/* add to cache for later use if resolution ok */
-			//fprintf(stderr, "fh_decomp: 4th: '%s'\n", result);
-		} else {
-				/* could not resolve in any way */
-				st_cache_valid = FALSE;
-			}
-    } else {
-		/* found, update st_cache  */	
-		backend_statstruct buf;
-		backend_lstat(result, &buf);
-		st_cache_valid = TRUE;
-		st_cache = buf;		
-	}
 	//fprintf(stderr, "fh_decomp: Final: '%s'\n", result);
     return result;
 }
@@ -113,7 +99,7 @@ GETATTR3res *nfsproc3_getattr_3_svc(GETATTR3args * argp,
     post_op_attr post;
 
     path = fh_decomp(argp->object);
-    post = get_post_cached(rqstp);
+    post = get_post(path, rqstp);
 
     result.status = NFS3_OK;
     result.GETATTR3res_u.resok.obj_attributes =
@@ -187,9 +173,11 @@ SETATTR3res *nfsproc3_setattr_3_svc(SETATTR3args * argp,
     static SETATTR3res result;
     pre_op_attr pre;
     char *path;
-
+	
+	backend_statstruct stbuf;
     path = fh_decomp(argp->object);
-    pre = get_pre_cached();
+	backend_lstat(path, &stbuf);
+    pre = get_pre(path);
     result.status = join(in_sync(argp->guard, pre), exports_rw());
 
     if (result.status == NFS3_OK)
@@ -197,7 +185,8 @@ SETATTR3res *nfsproc3_setattr_3_svc(SETATTR3args * argp,
 
     /* overlaps with resfail */
     result.SETATTR3res_u.resok.obj_wcc.before = pre;
-    result.SETATTR3res_u.resok.obj_wcc.after = get_post_stat(path, rqstp);
+    result.SETATTR3res_u.resok.obj_wcc.after =
+		get_post_ll(path, stbuf.st_dev, stbuf.st_ino, rqstp);
 
     return &result;
 }
@@ -212,7 +201,11 @@ LOOKUP3res *nfsproc3_lookup_3_svc(LOOKUP3args * argp, struct svc_req * rqstp)
     int res;
     uint32 gen;
 
-    path = fh_decomp(argp->what.dir);
+    
+	backend_statstruct stbuf;
+	path = fh_decomp(argp->what.dir);
+	backend_lstat(path, &stbuf);
+
     result.status = cat_name(path, argp->what.name, obj);
 
     if (result.status == NFS3_OK) {
@@ -250,7 +243,8 @@ LOOKUP3res *nfsproc3_lookup_3_svc(LOOKUP3args * argp, struct svc_req * rqstp)
     }
 
     /* overlaps with resfail */
-    result.LOOKUP3res_u.resok.dir_attributes = get_post_stat(path, rqstp);
+    result.LOOKUP3res_u.resok.dir_attributes = 
+		get_post_ll(path, stbuf.st_dev, stbuf.st_ino, rqstp);
     return &result;
 }
 
@@ -262,7 +256,7 @@ ACCESS3res *nfsproc3_access_3_svc(ACCESS3args * argp, struct svc_req * rqstp)
     int newaccess = 0;
 
     path = fh_decomp(argp->object);
-    post = get_post_cached(rqstp);
+    post = get_post(path, rqstp);
 
     /* allow everything */
     newaccess |= ACCESS3_READ | ACCESS3_MODIFY | ACCESS3_EXTEND | ACCESS3_EXECUTE;
@@ -291,7 +285,9 @@ READLINK3res *nfsproc3_readlink_3_svc(READLINK3args * argp,
     static char buf[NFS_MAXPATHLEN];
     int res;
 
+	backend_statstruct stbuf;
     path = fh_decomp(argp->symlink);
+	backend_lstat(path, &stbuf);
 
     res = backend_readlink(path, buf, NFS_MAXPATHLEN - 1);
     if (res == -1)
@@ -306,7 +302,7 @@ READLINK3res *nfsproc3_readlink_3_svc(READLINK3args * argp,
 
     /* overlaps with resfail */
     result.READLINK3res_u.resok.symlink_attributes =
-	get_post_stat(path, rqstp);
+		get_post_ll(path, stbuf.st_dev, stbuf.st_ino, rqstp);
 
     return &result;
 }
@@ -324,8 +320,10 @@ READ3res *nfsproc3_read_3_svc(READ3args * argp, struct svc_req * rqstp)
     else
 	maxdata = NFS_MAXDATA_UDP;
 
-    path = fh_decomp(argp->file);
-    result.status = is_reg();
+    backend_statstruct stbuf;
+	path = fh_decomp(argp->file);
+	backend_lstat(path, &stbuf);
+    result.status = is_reg(path);
 
     /* if bigger than rtmax, truncate length */
     if (argp->count > maxdata)
@@ -367,8 +365,8 @@ READ3res *nfsproc3_read_3_svc(READ3args * argp, struct svc_req * rqstp)
     }
 
     /* overlaps with resfail */
-    result.READ3res_u.resok.file_attributes = get_post_stat(path, rqstp);
-
+    result.READ3res_u.resok.file_attributes =
+		get_post_ll(path, stbuf.st_dev, stbuf.st_ino, rqstp);
     return &result;
 }
 
@@ -378,8 +376,12 @@ WRITE3res *nfsproc3_write_3_svc(WRITE3args * argp, struct svc_req * rqstp)
     char *path;
     int fd, res, res_close;
 
-    path = fh_decomp(argp->file);
-    result.status = join(is_reg(), exports_rw());
+    backend_statstruct stbuf;
+	path = fh_decomp(argp->file);
+	backend_lstat(path, &stbuf);
+	pre_op_attr pre;
+	pre = get_pre(path);
+    result.status = join(is_reg(path), exports_rw());
 
     if (result.status == NFS3_OK) {
 	/* We allow caching of the fd only for unstable writes. This is to
@@ -419,9 +421,9 @@ WRITE3res *nfsproc3_write_3_svc(WRITE3args * argp, struct svc_req * rqstp)
     }
 
     /* overlaps with resfail */
-    result.WRITE3res_u.resok.file_wcc.before = get_pre_cached();
-    result.WRITE3res_u.resok.file_wcc.after = get_post_stat(path, rqstp);
-
+    result.WRITE3res_u.resok.file_wcc.before = pre;
+    result.WRITE3res_u.resok.file_wcc.after = 
+		get_post_ll(path, stbuf.st_dev, stbuf.st_ino, rqstp);
     return &result;
 }
 
@@ -460,7 +462,13 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
     uint32 gen;
     int flags = O_RDWR | O_CREAT | O_TRUNC | O_NONBLOCK;
 
+	backend_statstruct stbuf;
     path = fh_decomp(argp->where.dir);
+	backend_lstat(path, &stbuf);
+
+	pre_op_attr pre;
+	pre = get_pre(path);
+    
     result.status = join(cat_name(path, argp->where.name, obj), exports_rw());
 
     /* GUARDED and EXCLUSIVE maps to Unix exclusive create */
@@ -532,8 +540,9 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
     }
 
 	//fprintf(stderr,  "overlaps with resfail\n");
-    result.CREATE3res_u.resok.dir_wcc.before = get_pre_cached();
-    result.CREATE3res_u.resok.dir_wcc.after = get_post_stat(path, rqstp);
+    result.CREATE3res_u.resok.dir_wcc.before = pre;
+    result.CREATE3res_u.resok.dir_wcc.after = 
+		get_post_ll(path, stbuf.st_dev, stbuf.st_ino, rqstp);
 
     return &result;
 }
@@ -548,7 +557,7 @@ MKDIR3res *nfsproc3_mkdir_3_svc(MKDIR3args * argp, struct svc_req * rqstp)
     int res;
 
     path = fh_decomp(argp->where.dir);
-    pre = get_pre_cached();
+    pre = get_pre(path);
     result.status =
 	join3(cat_name(path, argp->where.name, obj),
 	      atomic_attr(argp->attributes), exports_rw());
@@ -560,7 +569,7 @@ MKDIR3res *nfsproc3_mkdir_3_svc(MKDIR3args * argp, struct svc_req * rqstp)
 	else {
 	    result.MKDIR3res_u.resok.obj =
 		fh_extend_type(argp->where.dir, obj, S_IFDIR);
-	    result.MKDIR3res_u.resok.obj_attributes = get_post_cached(rqstp);
+	    result.MKDIR3res_u.resok.obj_attributes = get_post(obj, rqstp);
 	}
     }
 
@@ -585,7 +594,7 @@ SYMLINK3res *nfsproc3_symlink_3_svc(SYMLINK3args * argp,
     mode_t new_mode;
 
     path = fh_decomp(argp->where.dir);
-    pre = get_pre_cached();
+    pre = get_pre(path);
     result.status =
 	join3(cat_name(path, argp->where.name, obj),
 	      atomic_attr(argp->symlink.symlink_attributes), exports_rw());
@@ -609,7 +618,7 @@ SYMLINK3res *nfsproc3_symlink_3_svc(SYMLINK3args * argp,
 	    result.SYMLINK3res_u.resok.obj =
 		fh_extend_type(argp->where.dir, obj, S_IFLNK);
 	    result.SYMLINK3res_u.resok.obj_attributes =
-		get_post_cached(rqstp);
+		get_post(obj, rqstp);
 	}
     }
 
@@ -703,7 +712,7 @@ MKNOD3res *nfsproc3_mknod_3_svc(MKNOD3args * argp, struct svc_req * rqstp)
     dev_t dev = 0;
 
     path = fh_decomp(argp->where.dir);
-    pre = get_pre_cached();
+    pre = get_pre(path);
     result.status =
 	join3(cat_name(path, argp->where.name, obj),
 	      mknod_args(argp->what, obj, &new_mode, &dev), exports_rw());
@@ -720,9 +729,8 @@ MKNOD3res *nfsproc3_mknod_3_svc(MKNOD3args * argp, struct svc_req * rqstp)
 	    result.status = mknod_err();
 	} else {
 	    result.MKNOD3res_u.resok.obj =
-		fh_extend_type(argp->where.dir, obj,
-			       type_to_mode(argp->what.type));
-	    result.MKNOD3res_u.resok.obj_attributes = get_post_cached(rqstp);
+		fh_extend_type(argp->where.dir, obj, type_to_mode(argp->what.type));
+	    result.MKNOD3res_u.resok.obj_attributes = get_post(obj, rqstp);
 	}
     }
 
@@ -742,7 +750,12 @@ REMOVE3res *nfsproc3_remove_3_svc(REMOVE3args * argp, struct svc_req * rqstp)
     char obj[NFS_MAXPATHLEN];
     int res;
 
+	backend_statstruct stbuf;
     path = fh_decomp(argp->object.dir);
+	backend_lstat(path, &stbuf);
+	pre_op_attr pre;
+	pre = get_pre(path);
+    
     result.status =
 	join(cat_name(path, argp->object.name, obj), exports_rw());
 
@@ -754,9 +767,9 @@ REMOVE3res *nfsproc3_remove_3_svc(REMOVE3args * argp, struct svc_req * rqstp)
     }
 
     /* overlaps with resfail */
-    result.REMOVE3res_u.resok.dir_wcc.before = get_pre_cached();
-    result.REMOVE3res_u.resok.dir_wcc.after = get_post_stat(path, rqstp);
-
+    result.REMOVE3res_u.resok.dir_wcc.before = pre;
+    result.REMOVE3res_u.resok.dir_wcc.after = 
+		get_post_ll(path, stbuf.st_dev, stbuf.st_ino, rqstp);
     return &result;
 }
 
@@ -767,7 +780,12 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
     char obj[NFS_MAXPATHLEN];
     int res;
 
+	backend_statstruct stbuf;
     path = fh_decomp(argp->object.dir);
+	backend_lstat(path, &stbuf);
+	pre_op_attr pre;
+	pre = get_pre(path);
+    
     result.status =
 	join(cat_name(path, argp->object.name, obj), exports_rw());
 
@@ -779,9 +797,9 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
     }
 
     /* overlaps with resfail */
-    result.RMDIR3res_u.resok.dir_wcc.before = get_pre_cached();
-    result.RMDIR3res_u.resok.dir_wcc.after = get_post_stat(path, rqstp);
-
+    result.RMDIR3res_u.resok.dir_wcc.before = pre;
+    result.RMDIR3res_u.resok.dir_wcc.after = 
+		get_post_ll(path, stbuf.st_dev, stbuf.st_ino, rqstp);
     return &result;
 }
 
@@ -792,16 +810,23 @@ RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
     char *to;
     char from_obj[NFS_MAXPATHLEN];
     char to_obj[NFS_MAXPATHLEN];
-    pre_op_attr pre;
     post_op_attr post;
     int res;
 
     from = fh_decomp(argp->from.dir);
-    pre = get_pre_cached();
-    result.status =
-	join(cat_name(from, argp->from.name, from_obj), exports_rw());
+	
+    pre_op_attr from_pre;
+    from_pre = get_pre(from);
+	
+    result.status = join(cat_name(from, argp->from.name, from_obj), exports_rw());
 
+	backend_statstruct stbuf;
     to = fh_decomp(argp->to.dir);
+	backend_lstat(to, &stbuf);
+	
+	pre_op_attr to_pre;
+	to_pre = get_pre(to);
+    
 
     if (result.status == NFS3_OK) {
 	result.status =
@@ -820,10 +845,11 @@ RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
     post = get_post_attr(from, argp->from.dir, rqstp);
 
     /* overlaps with resfail */
-    result.RENAME3res_u.resok.fromdir_wcc.before = pre;
+    result.RENAME3res_u.resok.fromdir_wcc.before = from_pre;
     result.RENAME3res_u.resok.fromdir_wcc.after = post;
-    result.RENAME3res_u.resok.todir_wcc.before = get_pre_cached();
-    result.RENAME3res_u.resok.todir_wcc.after = get_post_stat(to, rqstp);
+    result.RENAME3res_u.resok.todir_wcc.before = to_pre;
+    result.RENAME3res_u.resok.todir_wcc.after = 
+		get_post_ll(to, stbuf.st_dev, stbuf.st_ino, rqstp);
 
     return &result;
 }
@@ -838,10 +864,12 @@ LINK3res *nfsproc3_link_3_svc(LINK3args * argp, struct svc_req * rqstp)
     int res;
 
     path = fh_decomp(argp->link.dir);
-    pre = get_pre_cached();
+    pre = get_pre(path);
     result.status = join(cat_name(path, argp->link.name, obj), exports_rw());
 
-    old = fh_decomp(argp->file);
+    backend_statstruct stbuf;
+	old = fh_decomp(argp->file);
+	backend_lstat(old, &stbuf);
 
     if (old && result.status == NFS3_OK) {
 	result.status = NFS3_OK;
@@ -857,7 +885,8 @@ LINK3res *nfsproc3_link_3_svc(LINK3args * argp, struct svc_req * rqstp)
     post = get_post_attr(path, argp->link.dir, rqstp);
 
     /* overlaps with resfail */
-    result.LINK3res_u.resok.file_attributes = get_post_stat(old, rqstp);
+    result.LINK3res_u.resok.file_attributes =
+		get_post_ll(old, stbuf.st_dev, stbuf.st_ino, rqstp);
     result.LINK3res_u.resok.linkdir_wcc.before = pre;
     result.LINK3res_u.resok.linkdir_wcc.after = post;
 
@@ -870,10 +899,12 @@ READDIR3res *nfsproc3_readdir_3_svc(READDIR3args * argp,
     static READDIR3res result;
     char *path;
 
+	backend_statstruct stbuf;
     path = fh_decomp(argp->dir);
-
+	backend_lstat(path, &stbuf);
     result = read_dir(path, argp->cookie, argp->cookieverf, argp->count);
-    result.READDIR3res_u.resok.dir_attributes = get_post_stat(path, rqstp);
+    result.READDIR3res_u.resok.dir_attributes = 
+		get_post_ll(path, stbuf.st_dev, stbuf.st_ino, rqstp);
 
     return &result;
 }
@@ -904,7 +935,7 @@ FSSTAT3res *nfsproc3_fsstat_3_svc(FSSTAT3args * argp, struct svc_req * rqstp)
     path = fh_decomp(argp->fsroot);
 
     /* overlaps with resfail */
-    result.FSSTAT3res_u.resok.obj_attributes = get_post_cached(rqstp);
+    result.FSSTAT3res_u.resok.obj_attributes = get_post(path, rqstp);
 
     res = backend_statvfs(path, &buf);
     if (res == -1) {
@@ -953,7 +984,7 @@ FSINFO3res *nfsproc3_fsinfo_3_svc(FSINFO3args * argp, struct svc_req * rqstp)
 
     path = fh_decomp(argp->fsroot);
 
-    result.FSINFO3res_u.resok.obj_attributes = get_post_cached(rqstp);
+    result.FSINFO3res_u.resok.obj_attributes = get_post(path, rqstp);
 
     result.status = NFS3_OK;
     result.FSINFO3res_u.resok.rtmax = maxdata;
@@ -979,7 +1010,7 @@ PATHCONF3res *nfsproc3_pathconf_3_svc(PATHCONF3args * argp,
 
     path = fh_decomp(argp->object);
 
-    result.PATHCONF3res_u.resok.obj_attributes = get_post_cached(rqstp);
+    result.PATHCONF3res_u.resok.obj_attributes = get_post(path, rqstp);
 
     result.status = NFS3_OK;
     result.PATHCONF3res_u.resok.linkmax = 0xFFFFFFFF;
@@ -1001,8 +1032,12 @@ COMMIT3res *nfsproc3_commit_3_svc(COMMIT3args * argp, struct svc_req * rqstp)
     int res1;
     int res2;
 
+    backend_statstruct stbuf;
     path = fh_decomp(argp->file);
-    result.status = join(is_reg(), exports_rw());
+	backend_lstat(path, &stbuf);
+	pre_op_attr pre;
+	pre = get_pre(path);
+    result.status = join(is_reg(path), exports_rw());
 
     if (result.status == NFS3_OK) {
 	
@@ -1021,8 +1056,9 @@ COMMIT3res *nfsproc3_commit_3_svc(COMMIT3args * argp, struct svc_req * rqstp)
     }
 
     /* overlaps with resfail */
-    result.COMMIT3res_u.resfail.file_wcc.before = get_pre_cached();
-    result.COMMIT3res_u.resfail.file_wcc.after = get_post_stat(path, rqstp);
+    result.COMMIT3res_u.resfail.file_wcc.before = pre;
+    result.COMMIT3res_u.resfail.file_wcc.after = 
+		get_post_ll(path, stbuf.st_dev, stbuf.st_ino, rqstp);
 
     return &result;
 }

@@ -21,12 +21,6 @@
 #define FH_HASH(n) ((n ^ (n >> 8) ^ (n >> 16) ^ (n >> 24) ^ (n >> 32) ^ (n >> 40) ^ (n >> 48) ^ (n >> 56)) & 0xFF)
 
 /*
- * stat cache
- */
-int st_cache_valid = FALSE;
-backend_statstruct st_cache;
-
-/*
  * --------------------------------
  * FILEHANDLE COMPOSITION FUNCTIONS
  * --------------------------------
@@ -202,13 +196,8 @@ post_op_fh3 fh_extend_type(nfs_fh3 fh, const char *path, unsigned int type)
 
     res = backend_lstat(path, &buf);
     if (res < 0 || (buf.st_mode & type) != type) {
-	st_cache_valid = FALSE;
-	result.handle_follows = FALSE;
-	return result;
+		return result;
     }
-
-    st_cache_valid = TRUE;
-    st_cache = buf;
 
     return fh_extend_post(fh, buf.st_dev, buf.st_ino);
 }
