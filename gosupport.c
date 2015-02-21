@@ -60,90 +60,7 @@ int go_rmdir(const char *path){
 	return retV;
 }
 
-//Functions exported from Go
-/*
-int go_init() {
-    return go_nop();
-}
-
-int go_open(const char *pathname, int flags) {
-    return go_nop();
-}
-
-int go_close(int fd) {
-	return go_nop();
-}
-
-int go_lstat(const char *file_name, go_statstruct * buf)
-{
-	return go_nop();
-
-	
-int go_fstat(int fd, go_statstruct * buf)
-{
-	return go_nop();
-}
-
-int go_pread(int fd, char *buf, count3 count, offset3 offset) {
- return go_nop();
-}
-
-int go_mkdir(const char *pathname, int mode){
-    return go_nop("mkdir");
-}
-
-int go_rmdir(const char *path){
-    return go_nop("rmdir");
-}
-
-
-int go_remove(char *pathname) {
-	return go_nop("remove");
-}
-
-int go_open_create(const char *pathname, int flags, int mode) {
-    return go_nop("open_create");
-}
-
-ssize_t go_pwrite(int fd, const void *buf, size_t count, offset3 offset) {
-	return go_nop("pwrite");
-}
-
-int go_fsync(int fd)
-{
-	return go_nop("fsync");
-}
-
-int go_ftruncate(int fd, offset3 length) {
-	return go_nop("ftruncate");
-}
-
-int go_truncate(const char *path, offset3 length) {
-	return go_nop("truncate");
-}
-
-int go_rename(const char *oldpath, const char *newpath){
-    return go_nop("rename");
-}
-
-int go_fchmod(int fd, int mode) {
-	return go_nop("fchmod");
-}
-
-int go_chmod(const char *path, int mode) {
-	return go_nop("chmod");
-}
-
-int go_fchown(int fd, uid_t owner, gid_t group) {
-	return go_nop("fchown");
-}
-
-int go_lchown(const char *path, uid_t owner, gid_t group) {
-	return go_nop("lchown");
-}
-*/
-
-int go_statvfs(const char *path, backend_statvfsstruct * buf){
+int go_statvfs(const char *path, go_statvfsstruct * buf){
 	errno = ENOSYS;
     return -1;
 }
@@ -165,7 +82,7 @@ int go_store_create_verifier(char *obj, createverf3 verf){
     return go_nop("store_create_verifier");
 }
 
-int go_check_create_verifier(backend_statstruct * buf, createverf3 verf){
+int go_check_create_verifier(go_statstruct * buf, createverf3 verf){
     return go_nop("check");
 }
 

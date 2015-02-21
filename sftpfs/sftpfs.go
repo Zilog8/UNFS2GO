@@ -11,6 +11,7 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -110,7 +111,9 @@ func (f *sftpFS) Stat(name string) (os.FileInfo, error) {
 	realname := f.translate(name)
 	fi, err := f.sftpClient.Lstat(realname)
 	if err != nil {
-		fmt.Println("sftpFS error: Stat: Lstat failed:", err)
+		if !strings.Contains(err.Error(), "not exist") {
+			fmt.Println("sftpFS error: Stat: Lstat failed:", err)
+		}
 		return nil, err
 	}
 	return fi, nil

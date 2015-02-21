@@ -148,8 +148,6 @@ struct nfs_fh3 {
 };
 typedef struct nfs_fh3 nfs_fh3;
 
-int fd_open(const char *path, nfs_fh3 fh, int kind);
-
 #define UNFS3_FD_READ  0			/* fd for READ */
 #define UNFS3_FD_WRITE 1			/* fd for WRITE */
 

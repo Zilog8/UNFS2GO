@@ -170,7 +170,7 @@ static void add_item(const char *path)
 		/* If marked as removable for all hosts, don't try
 		   realpath. */
 		normpath(path, buf);
-	} else if (!backend_realpath(path, buf)) {
+	} else if (!go_realpath(path, buf)) {
 		fprintf(stderr, "realpath for %s failed\n", path);
 		e_error = TRUE;
 		free(new);

@@ -8,14 +8,12 @@
  #include "error.c"
 
 /*
- * check whether stat_cache is for a regular file
- *
- * fh_decomp must be called before to fill the stat cache
+ * check whether path is for a regular file
  */
 nfsstat3 is_reg(const char *path)
 {
-	backend_statstruct buf;
-	backend_lstat(path, &buf);
+	go_statstruct buf;
+	go_lstat(path, &buf);
     if (S_ISREG(buf.st_mode))
 	return NFS3_OK;
     else
@@ -62,8 +60,8 @@ static post_op_attr error_attr = { FALSE };
  */
 post_op_attr get_post(const char *path, struct svc_req * req)
 {
-	backend_statstruct buf;
-    if (backend_lstat(path, &buf) < 0) {
+	go_statstruct buf;
+    if (go_lstat(path, &buf) < 0) {
 		return error_attr;
     }
 	
@@ -76,9 +74,9 @@ post_op_attr get_post(const char *path, struct svc_req * req)
 pre_op_attr get_pre(const char *path)
 {
     pre_op_attr result;
-	backend_statstruct buf;
+	go_statstruct buf;
 	
-    if (backend_lstat(path, &buf) < 0) {
+    if (go_lstat(path, &buf) < 0) {
 	result.attributes_follow = FALSE;
 	return result;
     }
@@ -97,7 +95,7 @@ pre_op_attr get_pre(const char *path)
 /*
  * compute post-operation attributes given a stat buffer
  */
-post_op_attr get_post_buf(backend_statstruct buf, struct svc_req * req)
+post_op_attr get_post_buf(go_statstruct buf, struct svc_req * req)
 {
     post_op_attr result;
 
@@ -135,32 +133,9 @@ post_op_attr get_post_buf(backend_statstruct buf, struct svc_req * req)
     result.post_op_attr_u.attributes.mode = buf.st_mode & 0xFFFF;
     result.post_op_attr_u.attributes.nlink = buf.st_nlink;
 
-    /* If -s, translate uids */
-    if (opt_singleuser) {
-	unsigned int req_uid = 0;
-	unsigned int req_gid = 0;
-	struct authunix_parms *auth = (void *) req->rq_clntcred;
-	uid_t ruid = backend_getuid();
-
-	if (req->rq_cred.oa_flavor == AUTH_UNIX) {
-	    req_uid = auth->aup_uid;
-	    req_gid = auth->aup_gid;
-	}
-
-	if ((buf.st_uid == ruid) || (ruid == 0))
-	    result.post_op_attr_u.attributes.uid = req_uid;
-	else
-	    result.post_op_attr_u.attributes.uid = 0;
-
-	if ((buf.st_gid == backend_getgid()) || (ruid == 0))
-	    result.post_op_attr_u.attributes.gid = req_gid;
-	else
-	    result.post_op_attr_u.attributes.gid = 0;
-    } else {
-	/* Normal case */
+    /* Normal case */
 	result.post_op_attr_u.attributes.uid = buf.st_uid;
 	result.post_op_attr_u.attributes.gid = buf.st_gid;
-    }
 
     result.post_op_attr_u.attributes.size = buf.st_size;
     result.post_op_attr_u.attributes.used = buf.st_blocks * 512;
@@ -173,9 +148,9 @@ post_op_attr get_post_buf(backend_statstruct buf, struct svc_req * req)
        for all objects which resides in the same file system as the exported
        directory */
     if (exports_opts & OPT_REMOVABLE) {
-	backend_statstruct epbuf;
+	go_statstruct epbuf;
 
-	if (backend_lstat(export_path, &epbuf) > -1 &&
+	if (go_lstat(export_path, &epbuf) > -1 &&
 	    buf.st_dev == epbuf.st_dev) {
 	    result.post_op_attr_u.attributes.fsid = 0;
 	}
@@ -200,21 +175,16 @@ post_op_attr get_post_buf(backend_statstruct buf, struct svc_req * req)
 /*
  * lowlevel routine for getting post-operation attributes
  */
-static post_op_attr get_post_ll(const char *path, uint32 dev, uint64 ino,
-				struct svc_req *req)
+static post_op_attr get_post_ll(const char *path, struct svc_req *req)
 {
-    backend_statstruct buf;
+    go_statstruct buf;
     int res;
 
     if (!path)
 	return error_attr;
 
-    res = backend_lstat(path, &buf);
+    res = go_lstat(path, &buf);
     if (res < 0)
-	return error_attr;
-
-    /* protect against local fs race */
-    if (dev != buf.st_dev || ino != buf.st_ino)
 	return error_attr;
 
     return get_post_buf(buf, req);
@@ -228,7 +198,7 @@ post_op_attr get_post_attr(const char *path, nfs_fh3 nfh,
 {
     unfs3_fh_t *fh = (void *) nfh.data.data_val;
 
-    return get_post_ll(path, fh->dev, fh->ino, req);
+    return get_post_ll(path, req);
 }
 
 /*
@@ -236,7 +206,7 @@ post_op_attr get_post_attr(const char *path, nfs_fh3 nfh,
  *
  * there is no futimes() function in POSIX or Linux
  */
-static nfsstat3 set_time(const char *path, backend_statstruct buf, sattr3 new)
+static nfsstat3 set_time(const char *path, go_statstruct buf, sattr3 new)
 {
     time_t new_atime, new_mtime;
     struct utimbuf utim;
@@ -264,7 +234,7 @@ static nfsstat3 set_time(const char *path, backend_statstruct buf, sattr3 new)
 	utim.actime = new_atime;
 	utim.modtime = new_mtime;
 
-	res = backend_utime(path, &utim);
+	res = go_utime(path, &utim);
 	if (res == -1)
 	    return setattr_err();
     }
@@ -280,22 +250,22 @@ static nfsstat3 set_attr_unsafe(const char *path, nfs_fh3 nfh, sattr3 new)
     unfs3_fh_t *fh = (void *) nfh.data.data_val;
     uid_t new_uid;
     gid_t new_gid;
-    backend_statstruct buf;
+    go_statstruct buf;
     int res;
 
-    res = backend_lstat(path, &buf);
+    res = go_lstat(path, &buf);
     if (res == -2)
 	return NFS3ERR_NOENT;
     if (res == -1)
 	return NFS3ERR_STALE;
 
     /* check local fs race */
-    if (buf.st_dev != fh->dev || buf.st_ino != fh->ino)
+    if (buf.st_ino != fh->ino)
 	return NFS3ERR_STALE;
 
     /* set file size */
     if (new.size.set_it == TRUE) {
-	res = backend_truncate(path, new.size.set_size3_u.size);
+	res = go_truncate(path, new.size.set_size3_u.size);
 	if (res == -1)
 	    return setattr_err();
     }
@@ -314,14 +284,14 @@ static nfsstat3 set_attr_unsafe(const char *path, nfs_fh3 nfh, sattr3 new)
 	else
 	    new_gid = -1;
 
-	res = backend_lchown(path, new_uid, new_gid);
+	res = go_lchown(path, new_uid, new_gid);
 	if (res == -1)
 	    return setattr_err();
     }
 
     /* set mode */
     if (new.mode.set_it == TRUE) {
-	res = backend_chmod(path, new.mode.set_mode3_u.mode);
+	res = go_chmod(path, new.mode.set_mode3_u.mode);
 	if (res == -1)
 	    return setattr_err();
     }
@@ -335,12 +305,12 @@ static nfsstat3 set_attr_unsafe(const char *path, nfs_fh3 nfh, sattr3 new)
 nfsstat3 set_attr(const char *path, nfs_fh3 nfh, sattr3 new)
 {
     unfs3_fh_t *fh = (void *) nfh.data.data_val;
-    int res, fd;
+    int res, ores;
     uid_t new_uid;
     gid_t new_gid;
-    backend_statstruct buf;
+    go_statstruct buf;
 
-    res = backend_lstat(path, &buf);
+    res = go_lstat(path, &buf);
     if (res == -2)
 	return NFS3ERR_NOENT;
     if (res == -1)
@@ -365,34 +335,30 @@ nfsstat3 set_attr(const char *path, nfs_fh3 nfh, sattr3 new)
     /* 
      * open object for atomic setting of attributes
      */
-    fd = backend_open(path, O_WRONLY | O_NONBLOCK);
-    if (fd == -1)
-	fd = backend_open(path, O_RDONLY | O_NONBLOCK);
+    ores = go_open(path, UNFS3_FD_WRITE);
+    if (ores == -1)
+	ores = go_open(path, UNFS3_FD_READ);
 
-    if (fd == -1)
+    if (ores == -1)
 	return set_attr_unsafe(path, nfh, new);
 
-    res = backend_fstat(fd, &buf);
+    res = go_lstat(path, &buf);
     if (res == -2) {
-	backend_close(fd);
 	return NFS3ERR_NOENT;
     }
     if (res == -1) {
-	backend_close(fd);
 	return NFS3ERR_STALE;
     }
 
     /* check local fs race */
-    if (fh->dev != buf.st_dev || fh->ino != buf.st_ino) {
-	backend_close(fd);
+    if (fh->ino != buf.st_ino) {
 	return NFS3ERR_STALE;
     }
 
     /* set file size */
     if (new.size.set_it == TRUE) {
-	res = backend_ftruncate(fd, new.size.set_size3_u.size);
+	res = go_truncate(path, new.size.set_size3_u.size);
 	if (res == -1) {
-	    backend_close(fd);
 	    return setattr_err();
 	}
     }
@@ -411,26 +377,18 @@ nfsstat3 set_attr(const char *path, nfs_fh3 nfh, sattr3 new)
 	else
 	    new_gid = -1;
 
-	res = backend_fchown(fd, new_uid, new_gid);
+	res = go_lchown(path, new_uid, new_gid);
 	if (res == -1) {
-	    backend_close(fd);
 	    return setattr_err();
 	}
     }
 
     /* set mode */
     if (new.mode.set_it == TRUE) {
-	res = backend_fchmod(fd, new.mode.set_mode3_u.mode);
+	res = go_chmod(path, new.mode.set_mode3_u.mode);
 	if (res == -1) {
-	    backend_close(fd);
 	    return setattr_err();
 	}
-    }
-
-    res = backend_close(fd);
-    if (res == -1) {
-	/* error on close probably means attributes didn't make it */
-	return NFS3ERR_IO;
     }
 
     /* finally, set times */
@@ -448,22 +406,4 @@ mode_t create_mode(sattr3 new)
     else
 	return S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP | S_IXGRP |
 	    S_IROTH | S_IXOTH;
-}
-
-/*
- * check whether an sattr3 is settable atomically on a create op
- */
-nfsstat3 atomic_attr(sattr3 attr)
-{
-    uid_t used_uid = attr.uid.set_uid3_u.uid;
-    gid_t used_gid = attr.gid.set_gid3_u.gid;
-
-    if ((attr.uid.set_it == TRUE && used_uid != backend_geteuid()) ||
-	(attr.gid.set_it == TRUE && used_gid != backend_getegid()) ||
-	(attr.size.set_it == TRUE && attr.size.set_size3_u.size != 0) ||
-	attr.atime.set_it == SET_TO_CLIENT_TIME ||
-	attr.mtime.set_it == SET_TO_CLIENT_TIME)
-	return NFS3ERR_INVAL;
-    else
-	return NFS3_OK;
 }

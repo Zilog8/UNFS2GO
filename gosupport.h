@@ -48,14 +48,6 @@
 #define O_TRUNC       01000
 #define O_NONBLOCK	  04000
 
-#define HAVE_STRUCT_STAT_ST_GEN 1
-
-typedef struct _go_passwdstruct
-{
-    uint32   pw_uid;
-    uint32   pw_gid;
-} go_passwdstruct;
-
 /* Only includes fields actually used by unfs3 */
 typedef struct _go_statvfsstruct
 {
@@ -71,7 +63,6 @@ typedef struct _go_statstruct
 {
         uint32  st_dev;  
         uint64  st_ino;
-		uint32  st_gen;
         short st_mode;
         short   st_nlink;
         uint32  st_uid;

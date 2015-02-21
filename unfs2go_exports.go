@@ -4,7 +4,6 @@ package main
 //#include "unfs3/daemon.h"
 import "C"
 import (
-	"errors"
 	"fmt"
 	"os"
 	pathpkg "path"
@@ -19,7 +18,7 @@ var fddb fdCache //translator for file descriptors
 
 //export go_init
 func go_init() C.int {
-	fddb = fdCache{FDlistLock: new(sync.RWMutex), PathMapA: make(map[string]int), PathMapB: make(map[int]string), FDcounter: 100}
+	fddb = fdCache{FDlistLock: new(sync.RWMutex), PathMap: make(map[string]int), FDcounter: 100}
 	return 0
 }
 
@@ -34,19 +33,6 @@ func go_accept_mount(addr C.int, path *C.char) C.int {
 	} else {
 		fmt.Println("Host not allowed to connect:", hostaddress, "path:", gpath)
 		return 0
-	}
-}
-
-//export go_fgetpath
-func go_fgetpath(fd C.int) *C.char {
-	gofd := int(fd)
-	path, err := fddb.GetPath(gofd)
-	if err != nil {
-		fmt.Println("Error on go_fgetpath (fd =", gofd, " of ", fddb.FDcounter, ");", err)
-		return nil
-	} else {
-		//fmt.Println("go_fgetpath: Returning '", path, "' for fd:", gofd)
-		return C.CString(path)
 	}
 }
 
@@ -81,69 +67,72 @@ func go_opendir_helper(path *C.char) C.int {
 }
 
 //export go_open
-func go_open(path *C.char, flags C.int) C.int {
-	//Return the filedescriptor for this path
-	//If file doesn't exist, return -1
+func go_open(path *C.char, flags C.int) C.int { //flags == 0 if RO, == 1 if RW
 	pp := pathpkg.Clean("/" + C.GoString(path))
-	res := fddb.GetFD(pp)
-	if res > -1 {
-		//check if it's actually a file
-		fi, err := ns.Stat(pp)
-		if err != nil {
-			//fmt.Println("Error go_open statin': ", path, err)
-			return -1
-		}
-		if fi.IsDir() {
-			//fmt.Println("Error go_open: ", pp, " is a directory.")
-			return -1
-		} else {
-			return C.int(res)
-		}
-	} else {
+	
+	//check if exists
+	fi, err := ns.Stat(pp)
+	if err != nil {
+		//fmt.Println("Error go_open statin': ", path, err)
 		return -1
 	}
+	
+	//check if it's actually a file
+	if fi.IsDir() {
+		//fmt.Println("Error go_open: ", pp, " is a directory.")
+		return -2
+	}
+	
+	return 1
 }
 
-//export go_close
-func go_close(fd C.int) C.int {
-	return C.int(0)
-}
-
-//export go_fstat
-func go_fstat(fd C.int, buf *C.go_statstruct) C.int {
-	gofd := int(fd)
-	pp, err := fddb.GetPath(gofd)
-	if err == nil {
-		return getStat(pp, gofd, buf)
-	} else {
-		fmt.Println("Error go_fstat: GetPath Failed:", err)
+//export go_exists
+func go_exists(path *C.char) C.int {
+	pp := pathpkg.Clean("/" + C.GoString(path))
+	_, err := ns.Stat(pp)
+	if err != nil {
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "not found") || strings.Contains(lower, "not exist") {
+			//fmt.Println("Error stat: not found:", pp)
+			return -2
+		}
+		fmt.Println("Error stat: ", pp, " internal stat errored:", err)
 		return -1
 	}
+	return 1
 }
 
 //export go_lstat
 func go_lstat(path *C.char, buf *C.go_statstruct) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
-	fd := fddb.GetFD(pp)
-	return getStat(pp, fd, buf)
+	fi, err := ns.Stat(pp)
+	if err != nil {
+		lower := strings.ToLower(err.Error())
+		if strings.Contains(lower, "not found") || strings.Contains(lower, "not exist") {
+			//fmt.Println("Error stat: not found:", pp)
+			return -2
+		}
+		fmt.Println("Error stat: ", pp, " internal stat errored:", err)
+		return -1
+	}
+	buf.st_dev = C.uint32(1)
+	buf.st_ino = C.uint64(fddb.GetFD(pp))
+	buf.st_size = C.uint64(fi.Size())
+	buf.st_atime = C.time_t(time.Now().Unix())
+	buf.st_mtime = C.time_t(fi.ModTime().Unix())
+	buf.st_ctime = C.time_t(fi.ModTime().Unix())
+
+	if fi.IsDir() {
+		buf.st_mode = C.short(fi.Mode() | C.S_IFDIR)
+	} else {
+		buf.st_mode = C.short(fi.Mode() | C.S_IFREG)
+	}
+	return 0
 }
 
 //export go_shutdown
 func go_shutdown() {
 	shutDown()
-}
-
-//export go_fchown
-func go_fchown(fd C.int, owner C.int, group C.int) C.int {
-	gofd := int(fd)
-	pp, err := fddb.GetPath(gofd)
-	if err == nil {
-		err = ns.SetAttribute(pp, "own", []int{int(owner), int(group)})
-		if err == nil {
-			return 0
-		}
-	}
-	return -1
 }
 
 //export go_lchown
@@ -152,19 +141,6 @@ func go_lchown(path *C.char, owner C.int, group C.int) C.int {
 	err := ns.SetAttribute(pp, "own", []int{int(owner), int(group)})
 	if err == nil {
 		return 0
-	}
-	return -1
-}
-
-//export go_fchmod
-func go_fchmod(fd C.int, mode C.int) C.int {
-	gofd := int(fd)
-	pp, err := fddb.GetPath(gofd)
-	if err == nil {
-		err = ns.SetAttribute(pp, "mode", os.FileMode(int(mode)))
-		if err == nil {
-			return 0
-		}
 	}
 	return -1
 }
@@ -228,23 +204,6 @@ func go_utime_helper(path *C.char, actime C.int, modtime C.int) C.int {
 	return 0
 }
 
-//export go_ftruncate
-func go_ftruncate(fd C.int, offset3 C.int) C.int {
-	gofd := int(fd)
-	off := int64(offset3)
-	pp, err := fddb.GetPath(gofd)
-	if err != nil {
-		fmt.Println("Error on ftruncate of (fd=", fd, "size =", off, ")", err)
-		return -1
-	}
-	err = ns.SetAttribute(pp, "size", off)
-	if err != nil {
-		fmt.Println("Error on ftruncate of", pp, "(fd=", fd, "size =", off, ")", err)
-		return -1
-	}
-	return 0
-}
-
 //export go_open_create
 func go_open_create(pathname *C.char, flags C.int, mode C.int) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(pathname))
@@ -253,7 +212,7 @@ func go_open_create(pathname *C.char, flags C.int, mode C.int) C.int {
 		fmt.Println("Error open_create file at create: ", pp, " due to: ", err)
 		return -1
 	}
-	return C.int(fddb.GetFD(pp))
+	return 1
 }
 
 //export go_remove
@@ -327,8 +286,8 @@ func go_nop(name *C.char) C.int {
 }
 
 //export go_pwrite
-func go_pwrite(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
-	gofd := int(fd)
+func go_pwrite(path *C.char, buf unsafe.Pointer, count C.int, offset C.int) C.int {
+	pp := pathpkg.Clean("/" + C.GoString(path))
 	off := int64(offset)
 	counted := int(count)
 
@@ -336,20 +295,9 @@ func go_pwrite(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
 	slice := &reflect.SliceHeader{Data: uintptr(buf), Len: counted, Cap: counted}
 	cbuf := *(*[]byte)(unsafe.Pointer(slice))
 
-	var (
-		pp          string
-		copiedBytes int
-		err         error
-	)
-	pp, err = fddb.GetPath(gofd)
+	copiedBytes, err := ns.WriteFile(pp, cbuf, off)
 	if err != nil {
-		fmt.Println("Error on pwrite (GetPath of fd =", gofd, ");", err)
-		return -1
-	}
-	copiedBytes, err = ns.WriteFile(pp, cbuf, off)
-	if err != nil {
-		fmt.Println("Error on pwrite of", pp, "(fd =", gofd,
-			") (start =", off, " count =", counted, ")", err)
+		fmt.Println("Error on pwrite of", pp, "(start =", off, " count =", counted, ")", err)
 		return -1
 	}
 	return C.int(copiedBytes)
@@ -357,112 +305,43 @@ func go_pwrite(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
 }
 
 //export go_pread
-func go_pread(fd C.int, buf unsafe.Pointer, count C.int, offset C.int) C.int {
-	gofd := int(fd)
+func go_pread(path *C.char, buf unsafe.Pointer, count C.int, offset C.int) C.int {
+	pp := pathpkg.Clean("/" + C.GoString(path))
 	off := int64(offset)
 	counted := int(count)
 
 	//prepare the provided buffer for use
 	slice := &reflect.SliceHeader{Data: uintptr(buf), Len: counted, Cap: counted}
 	cbuf := *(*[]byte)(unsafe.Pointer(slice))
-
-	var (
-		pp          string
-		copiedBytes int
-		err         error
-	)
-	pp, err = fddb.GetPath(gofd)
-	if err != nil {
-		fmt.Println("Error on pread (GetPath of fd =", gofd, ");", err)
-		return -1
-	}
-	copiedBytes, err = ns.ReadFile(pp, cbuf, off)
+	
+	copiedBytes, err := ns.ReadFile(pp, cbuf, off)
 	if err != nil && !strings.Contains(err.Error(), "EOF") {
-		fmt.Println("Error on pread of", pp, "(fd =", gofd,
-			") (start =", off, " count =", counted, ")", err)
+		fmt.Println("Error on pread of", pp, "(start =", off, " count =", counted, ")", err)
 		return -1
 	}
 	return C.int(copiedBytes)
 }
 
-//export go_fsync
-func go_fsync(fd C.int) C.int {
-	gofd := int(fd)
-
-	_, err := fddb.GetPath(gofd)
-	if err != nil {
-		fmt.Println("Error on fsync (fd =", gofd, ");", err)
-		return -1
-	}
-	return 0
-}
-
-func getStat(pp string, fd int, buf *C.go_statstruct) C.int {
-	fi, err := ns.Stat(pp)
-	if err != nil {
-		lower := strings.ToLower(err.Error())
-		if strings.Contains(lower, "not found") || strings.Contains(lower, "not exist") {
-			fmt.Println("Error stat: not found:", pp)
-			return -2
-		}
-		fmt.Println("Error stat: ", pp, " internal stat errored:", err)
-		return -1
-	}
-	buf.st_dev = C.uint32(1)
-	buf.st_ino = C.uint64(fd)
-	buf.st_gen = C.uint32(fd)
-	buf.st_size = C.uint64(fi.Size())
-	buf.st_atime = C.time_t(time.Now().Unix())
-	buf.st_mtime = C.time_t(fi.ModTime().Unix())
-	buf.st_ctime = C.time_t(fi.ModTime().Unix())
-
-	if fi.IsDir() {
-		buf.st_mode = C.short(fi.Mode() | C.S_IFDIR)
-	} else {
-		buf.st_mode = C.short(fi.Mode() | C.S_IFREG)
-	}
-	return 0
-}
-
 type fdCache struct {
-	PathMapA   map[string]int
-	PathMapB   map[int]string
+	PathMap   map[string]int
 	FDcounter  int
 	FDlistLock *sync.RWMutex
 }
 
-func (f *fdCache) GetPath(fd int) (string, error) {
-	if fd < 100 {
-		return "", errors.New(fmt.Sprint("Error GetPath, filedescriptor too low ", fd))
-	}
-	f.FDlistLock.RLock()
-	path, ok := f.PathMapB[fd]
-	f.FDlistLock.RUnlock()
-	if ok {
-		return path, nil
-	} else {
-		return "", errors.New(fmt.Sprint("Error GetPath, filedescriptor not found ", fd))
-	}
-}
-
 func (f *fdCache) ReplacePath(oldpath, newpath string, isdir bool) {
 	f.FDlistLock.Lock()
-	fd := f.PathMapA[oldpath]
-	delete(f.PathMapA, oldpath)
-	delete(f.PathMapB, fd)
-	f.PathMapA[newpath] = fd
-	f.PathMapB[fd] = newpath
+	fd := f.PathMap[oldpath]
+	delete(f.PathMap, oldpath)
+	f.PathMap[newpath] = fd
 
 	if isdir {
 		op := oldpath + "/"
 		np := newpath + "/"
-		for path, fh := range f.PathMapA {
+		for path, fh := range f.PathMap {
 			if strings.HasPrefix(path, op) {
-				delete(f.PathMapA, path)
-				delete(f.PathMapB, fh)
+				delete(f.PathMap, path)
 				path = strings.Replace(path, op, np, 1)
-				f.PathMapA[path] = fh
-				f.PathMapB[fh] = path
+				f.PathMap[path] = fh
 			}
 		}
 	}
@@ -471,7 +350,7 @@ func (f *fdCache) ReplacePath(oldpath, newpath string, isdir bool) {
 
 func (f *fdCache) GetFD(path string) int {
 	f.FDlistLock.RLock()
-	i, ok := f.PathMapA[path]
+	i, ok := f.PathMap[path]
 	f.FDlistLock.RUnlock()
 	if ok {
 		return i
@@ -479,8 +358,7 @@ func (f *fdCache) GetFD(path string) int {
 	f.FDlistLock.Lock()
 	f.FDcounter++
 	newFD := f.FDcounter
-	f.PathMapA[path] = newFD
-	f.PathMapB[newFD] = path
+	f.PathMap[path] = newFD
 	f.FDlistLock.Unlock()
 	return newFD
 }

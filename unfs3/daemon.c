@@ -102,7 +102,7 @@ void daemon_exit(int error)
     if (opt_detach)
 	closelog();
 
-    backend_shutdown();
+    go_shutdown();
 
     exit(1);
 }
@@ -620,7 +620,7 @@ static void start(void) {
 	//printf("start\n");
 	register SVCXPRT *tcptransp = NULL, *udptransp = NULL;
     regenerate_write_verifier();
-    backend_init();
+    go_init();
 	//printf("backend inited\n");
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	udptransp = create_udp_transport(2049);

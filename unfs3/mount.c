@@ -136,7 +136,7 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	return &result;
     }
 
-    if (!backend_realpath(dpath, buf)) {
+    if (!go_realpath(dpath, buf)) {
 	/* the given path does not exist */
 	fprintf(stderr, "Mount svc: Given path does not exist\n");
 	result.fhs_status = MNT3ERR_NOENT;

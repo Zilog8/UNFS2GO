@@ -38,27 +38,25 @@
 
 uint32 directory_hash(const char *path)
 {
-    backend_dirstream *search;
+    go_dirstream *search;
     struct dirent *this;
     uint32 hval = 0;
 
-    search = backend_opendir(path);
+    search = go_opendir(path);
     if (!search) {
 	return 0;
     }
 
-    while ((this = backend_readdir(search)) != NULL) {
+    while ((this = go_readdir(search)) != NULL) {
 	hval = fnv1a_32(this->d_name, hval);
     }
 
-    backend_closedir(search);
+    go_closedir(search);
     return hval;
 }
 
 /*
  * perform a READDIR operation
- *
- * fh_decomp must be called directly before to fill the stat cache
  */
 READDIR3res read_dir(const char *path, cookie3 cookie, cookieverf3 verf,
 		     count3 count)
@@ -67,9 +65,9 @@ READDIR3res read_dir(const char *path, cookie3 cookie, cookieverf3 verf,
     READDIR3resok resok;
     cookie3 upper;
     static entry3 entry[MAX_ENTRIES];
-    backend_statstruct buf;
+    go_statstruct buf;
     int res;
-    backend_dirstream *search;
+    go_dirstream *search;
     struct dirent *this;
     count3 i, real_count;
     static char obj[NFS_MAXPATHLEN * MAX_ENTRIES];
@@ -102,7 +100,7 @@ READDIR3res read_dir(const char *path, cookie3 cookie, cookieverf3 verf,
        in the cookieverifier field." */
     memset(verf, 0, NFS3_COOKIEVERFSIZE);
 
-    search = backend_opendir(path);
+    search = go_opendir(path);
     if (!search) {
 	if ((exports_opts & OPT_REMOVABLE) && (export_point(path))) {
 	    /* Removable media export point; probably no media inserted.
@@ -119,12 +117,12 @@ READDIR3res read_dir(const char *path, cookie3 cookie, cookieverf3 verf,
 	}
     }
 
-    this = backend_readdir(search);
+    this = go_readdir(search);
     /* We cannot use telldir()/seekdir(), since the value from telldir() is
        not valid after closedir(). */
     for (i = 0; i < cookie; i++)
 	if (this)
-	    this = backend_readdir(search);
+	    this = go_readdir(search);
 
     i = 0;
     entry[0].name = NULL;
@@ -139,14 +137,14 @@ READDIR3res read_dir(const char *path, cookie3 cookie, cookieverf3 verf,
 	    else
 		sprintf(scratch, "%s/%s", path, this->d_name);
 
-	    res = backend_lstat(scratch, &buf);
+	    res = go_lstat(scratch, &buf);
 	    if (res <0) {
 			if (res == -2) {
 				errno = ENOENT;
 			}
-		result.status = readdir_err();
-		backend_closedir(search);
-		return result;
+			result.status = readdir_err();
+			go_closedir(search);
+			return result;
 	    }
 
 	    strcpy(&obj[i * NFS_MAXPATHLEN], this->d_name);
@@ -164,17 +162,17 @@ READDIR3res read_dir(const char *path, cookie3 cookie, cookieverf3 verf,
 		entry[i - 1].nextentry = NULL;
 	    else {
 		/* advance to next entry */
-		this = backend_readdir(search);
+		this = go_readdir(search);
 	    }
 
 	    i++;
 	} else {
 	    result.status = NFS3ERR_IO;
-	    backend_closedir(search);
+	    go_closedir(search);
 	    return result;
 	}
     }
-    backend_closedir(search);
+    go_closedir(search);
 
     if (entry[0].name)
 	resok.reply.entries = &entry[0];
