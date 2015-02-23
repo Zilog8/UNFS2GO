@@ -156,16 +156,19 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	result.fhs_status = MNT3ERR_ACCES;
 	return &result;
     }
+	
+	go_statstruct stbuf;	
 
-    fh = fh_comp_raw(buf, FH_DIR);
-
-    if (!fh_valid(fh)) {
-	fprintf(stderr, "%s attempted to mount non-directory\n",
-	       inet_ntoa(get_remote(rqstp)));
-	result.fhs_status = MNT3ERR_NOTDIR;
-	return &result;
+    if (go_lstat(buf, &stbuf)<0 || !S_ISDIR(stbuf.st_mode)) {
+		fprintf(stderr, "%s attempted to mount non-directory\n", inet_ntoa(get_remote(rqstp)));
+		result.fhs_status = MNT3ERR_NOTDIR;
+		return &result;
     }
-
+	
+	fh.ino = stbuf.st_ino;
+	strcpy(fh.path,buf);
+	fh.len = (unsigned)strlen(fh.path) + 1;
+	
     add_mount(dpath, rqstp);
 
     result.fhs_status = MNT3_OK;

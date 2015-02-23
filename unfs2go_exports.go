@@ -69,20 +69,20 @@ func go_opendir_helper(path *C.char) C.int {
 //export go_open
 func go_open(path *C.char, flags C.int) C.int { //flags == 0 if RO, == 1 if RW
 	pp := pathpkg.Clean("/" + C.GoString(path))
-	
+
 	//check if exists
 	fi, err := ns.Stat(pp)
 	if err != nil {
 		//fmt.Println("Error go_open statin': ", path, err)
 		return -1
 	}
-	
+
 	//check if it's actually a file
 	if fi.IsDir() {
 		//fmt.Println("Error go_open: ", pp, " is a directory.")
 		return -2
 	}
-	
+
 	return 1
 }
 
@@ -102,21 +102,37 @@ func go_exists(path *C.char) C.int {
 	return 1
 }
 
+func errTranslator(err error) C.int {
+	switch err {
+	case os.ErrPermission:
+		return -1
+	case os.ErrNotExist:
+		return -2
+	case os.ErrInvalid:
+		return -3
+	default:
+		return -4
+	}
+}
+
 //export go_lstat
 func go_lstat(path *C.char, buf *C.go_statstruct) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
 	fi, err := ns.Stat(pp)
 	if err != nil {
-		lower := strings.ToLower(err.Error())
-		if strings.Contains(lower, "not found") || strings.Contains(lower, "not exist") {
-			//fmt.Println("Error stat: not found:", pp)
-			return -2
+		retVal := errTranslator(err)
+		if retVal == -4 {
+			fmt.Println("Error on lstat of", pp, "):", err)
 		}
-		fmt.Println("Error stat: ", pp, " internal stat errored:", err)
-		return -1
+		return retVal
 	}
+	statTranslator(fi, fddb.GetFD(pp), buf)
+	return 0
+}
+
+func statTranslator(fi os.FileInfo, fd_ino int, buf *C.go_statstruct) {
 	buf.st_dev = C.uint32(1)
-	buf.st_ino = C.uint64(fddb.GetFD(pp))
+	buf.st_ino = C.uint64(fd_ino)
 	buf.st_size = C.uint64(fi.Size())
 	buf.st_atime = C.time_t(time.Now().Unix())
 	buf.st_mtime = C.time_t(fi.ModTime().Unix())
@@ -127,7 +143,6 @@ func go_lstat(path *C.char, buf *C.go_statstruct) C.int {
 	} else {
 		buf.st_mode = C.short(fi.Mode() | C.S_IFREG)
 	}
-	return 0
 }
 
 //export go_shutdown
@@ -296,9 +311,12 @@ func go_pwrite(path *C.char, buf unsafe.Pointer, count C.int, offset C.int) C.in
 	cbuf := *(*[]byte)(unsafe.Pointer(slice))
 
 	copiedBytes, err := ns.WriteFile(pp, cbuf, off)
-	if err != nil {
-		fmt.Println("Error on pwrite of", pp, "(start =", off, " count =", counted, ")", err)
-		return -1
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "eof") {
+		retVal := errTranslator(err)
+		if retVal == -4 {
+			fmt.Println("Error on pwrite of", pp, "(start =", off, "count =", counted, "copied =", copiedBytes, "):", err)
+		}
+		return retVal
 	}
 	return C.int(copiedBytes)
 
@@ -313,17 +331,43 @@ func go_pread(path *C.char, buf unsafe.Pointer, count C.int, offset C.int) C.int
 	//prepare the provided buffer for use
 	slice := &reflect.SliceHeader{Data: uintptr(buf), Len: counted, Cap: counted}
 	cbuf := *(*[]byte)(unsafe.Pointer(slice))
-	
+
 	copiedBytes, err := ns.ReadFile(pp, cbuf, off)
-	if err != nil && !strings.Contains(err.Error(), "EOF") {
-		fmt.Println("Error on pread of", pp, "(start =", off, " count =", counted, ")", err)
-		return -1
+	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "eof") {
+		retVal := errTranslator(err)
+		if retVal == -4 {
+			fmt.Println("Error on pread of", pp, "(start =", off, "count =", counted, "copied =", copiedBytes, "):", err)
+		}
+		return retVal
 	}
 	return C.int(copiedBytes)
 }
 
+//export go_sync
+func go_sync(path *C.char, buf *C.go_statstruct) C.int {
+	pp := pathpkg.Clean("/" + C.GoString(path))
+	fi, err := ns.Stat(pp)
+
+	switch {
+	case err == os.ErrPermission: //TODO: Add an " || (don't have write permissions in FI)"
+		return -1
+	case err == os.ErrNotExist:
+		buf.st_dev = C.uint32(666) //hint that stat didn't work out
+		return -2
+	case fi.IsDir():
+		return -3
+	case err != nil:
+		fmt.Println("Error on sync of", pp, ":", err)
+		buf.st_dev = C.uint32(666) //hint that stat didn't work out
+		return -4
+	default:
+		statTranslator(fi, fddb.GetFD(pp), buf)
+		return 1
+	}
+}
+
 type fdCache struct {
-	PathMap   map[string]int
+	PathMap    map[string]int
 	FDcounter  int
 	FDlistLock *sync.RWMutex
 }

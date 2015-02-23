@@ -17,9 +17,6 @@ nfsstat3 mknod_err(void);
 nfsstat3 link_err(void);
 nfsstat3 lookup_err(void);
 nfsstat3 readlink_err(void);
-nfsstat3 read_err(void);
-nfsstat3 write_open_err(void);
-nfsstat3 write_write_err(void);
 nfsstat3 create_err(void);
 nfsstat3 rename_err(void);
 

@@ -59,50 +59,8 @@ int fh_valid(unfs3_fh_t fh)
 #ifdef __GNUC__
 static const unfs3_fh_t invalid_fh = {.ino = 0,.len = 0,.path = {0} };
 #else
-static const unfs3_fh_t invalid_fh = { 0, 0, 0, 0, {0} };
+static const unfs3_fh_t invalid_fh = { 0, 0, {0} };
 #endif
-
-/*
- * compose a filehandle for a given path
- * path:     path to compose fh for
- * need_dir: if not 0, path must point to a directory
- */
-unfs3_fh_t fh_comp_raw(const char *path, int need_dir)
-{
-    unfs3_fh_t fh;
-    go_statstruct buf;
-    int res;
-    int pos = 0;
-
-    fh.len = 0;
-
-    res = go_lstat(path, &buf);
-	if (res == -2) {
-		//fprintf(stderr, "fh_comp_raw: Not Found for '%s'\n", path);
-	    return invalid_fh;
-	}
-    if (res == -1) {
-	    //fprintf(stderr, "fh_comp_raw: failed second test for '%s'\n", path);
-		return invalid_fh;
-	}
-    /* check for dir if need_dir is set */
-    if (need_dir != 0 && !S_ISDIR(buf.st_mode)) {
-		//fprintf(stderr, "fh_comp_raw: failed third test for '%s' mode was %i\n", path, buf.st_mode);
-		return invalid_fh;
-	}
-	
-    fh.ino = buf.st_ino;
-
-    /* special case for root directory */
-    if (strcmp(path, "/") == 0) {
-		return fh;
-	}
-
-	strcpy(fh.path,path);
-    fh.len = (unsigned)strlen(fh.path) + 1;
-
-    return fh;
-}
 
 /*
  * get real length of a filehandle
@@ -113,7 +71,7 @@ u_int fh_length(const unfs3_fh_t * fh)
 }
 
 /*
- * extend a filehandle with a given device, inode, and generation number
+ * extend a filehandle with a given device, inode, and path
  */
 unfs3_fh_t *fh_extend(nfs_fh3 nfh, uint64 ino, const char *path)
 {
@@ -131,7 +89,7 @@ unfs3_fh_t *fh_extend(nfs_fh3 nfh, uint64 ino, const char *path)
 }
 
 /*
- * get post_op_fh3 extended by device, inode, and generation number
+ * get post_op_fh3 extended by device, inode, and path
  */
 post_op_fh3 fh_extend_post(nfs_fh3 fh, uint64 ino, const char *path)
 {

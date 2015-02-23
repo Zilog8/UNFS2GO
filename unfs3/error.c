@@ -73,24 +73,6 @@ nfsstat3 link_err(void)
 	return symlink_err();
 }
 
-nfsstat3 lookup_err(void)
-{
-    if (errno == ENOENT)
-	return NFS3ERR_NOENT;
-#ifdef ENOMEDIUM
-    else if (errno == ENOMEDIUM)
-	return NFS3ERR_NOENT;
-#endif
-    else if (errno == EACCES)
-	return NFS3ERR_ACCES;
-    else if (errno == ENOTDIR || errno == ELOOP || errno == ENAMETOOLONG)
-	return NFS3ERR_STALE;
-    else if (errno == EINVAL)
-	return NFS3ERR_INVAL;
-    else
-	return NFS3ERR_IO;
-}
-
 nfsstat3 readlink_err(void)
 {
     if (errno == EINVAL)
@@ -101,50 +83,6 @@ nfsstat3 readlink_err(void)
 	return NFS3ERR_NOTSUPP;
     else if (is_stale())
 	return NFS3ERR_STALE;
-    else
-	return NFS3ERR_IO;
-}
-
-nfsstat3 read_err(void)
-{
-    if (errno == EINVAL)
-	return NFS3ERR_INVAL;
-    else if (is_stale())
-	return NFS3ERR_STALE;
-    else if (errno == EACCES)
-	return NFS3ERR_ACCES;
-    else if (errno == ENXIO || errno == ENODEV)
-	return NFS3ERR_NXIO;
-    else
-	return NFS3ERR_IO;
-}
-
-nfsstat3 write_open_err(void)
-{
-    if (errno == EACCES)
-	return NFS3ERR_ACCES;
-    else if (is_stale())
-	return NFS3ERR_STALE;
-    else if (errno == EINVAL)
-	return NFS3ERR_INVAL;
-    else if (errno == EROFS)
-	return NFS3ERR_ROFS;
-    else
-	return NFS3ERR_IO;
-}
-
-nfsstat3 write_write_err(void)
-{
-    if (errno == EINVAL)
-	return NFS3ERR_INVAL;
-    else if (errno == EFBIG)
-	return NFS3ERR_FBIG;
-    else if (errno == ENOSPC)
-	return NFS3ERR_NOSPC;
-#ifdef EDQUOT
-    else if (errno == EDQUOT)
-	return NFS3ERR_DQUOT;
-#endif
     else
 	return NFS3ERR_IO;
 }

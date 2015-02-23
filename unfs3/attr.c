@@ -8,19 +8,6 @@
  #include "error.c"
 
 /*
- * check whether path is for a regular file
- */
-nfsstat3 is_reg(const char *path)
-{
-	go_statstruct buf;
-	go_lstat(path, &buf);
-    if (S_ISREG(buf.st_mode))
-	return NFS3_OK;
-    else
-	return NFS3ERR_INVAL;
-}
-
-/*
  * find stat bit corresponding to given NFS file type
  */
 mode_t type_to_mode(ftype3 ftype)
@@ -66,6 +53,29 @@ post_op_attr get_post(const char *path, struct svc_req * req)
     }
 	
     return get_post_buf(buf, req);
+}
+
+/*
+ * return pre-operation attributes
+ */
+pre_op_attr get_pre_buf(go_statstruct buf)
+{
+    pre_op_attr result;
+	
+    if (buf.st_dev==666) { //stat failed, so buf is a lie
+		result.attributes_follow = FALSE;
+		return result;
+    }
+
+    result.attributes_follow = TRUE;
+
+    result.pre_op_attr_u.attributes.size = buf.st_size;
+    result.pre_op_attr_u.attributes.mtime.seconds = buf.st_mtime;
+    result.pre_op_attr_u.attributes.mtime.nseconds = 0;
+    result.pre_op_attr_u.attributes.ctime.seconds = buf.st_ctime;
+    result.pre_op_attr_u.attributes.ctime.nseconds = 0;
+
+    return result;
 }
 
 /*
@@ -144,18 +154,6 @@ post_op_attr get_post_buf(go_statstruct buf, struct svc_req * req)
     result.post_op_attr_u.attributes.rdev.specdata2 = buf.st_rdev & 0xFF;
     result.post_op_attr_u.attributes.fsid = buf.st_dev;
 
-    /* If this is a removable export point, we should return the preset fsid
-       for all objects which resides in the same file system as the exported
-       directory */
-    if (exports_opts & OPT_REMOVABLE) {
-	go_statstruct epbuf;
-
-	if (go_lstat(export_path, &epbuf) > -1 &&
-	    buf.st_dev == epbuf.st_dev) {
-	    result.post_op_attr_u.attributes.fsid = 0;
-	}
-    }
-
     /* Always truncate fsid to a 32-bit value, even though the fsid is
        defined as a uint64. We only use 32-bit variables for
        fsid/dev_t:s internally. This caused problems on systems where
@@ -173,24 +171,6 @@ post_op_attr get_post_buf(go_statstruct buf, struct svc_req * req)
 }
 
 /*
- * lowlevel routine for getting post-operation attributes
- */
-static post_op_attr get_post_ll(const char *path, struct svc_req *req)
-{
-    go_statstruct buf;
-    int res;
-
-    if (!path)
-	return error_attr;
-
-    res = go_lstat(path, &buf);
-    if (res < 0)
-	return error_attr;
-
-    return get_post_buf(buf, req);
-}
-
-/*
  * return post-operation attributes, using fh for old dev/ino
  */
 post_op_attr get_post_attr(const char *path, nfs_fh3 nfh,
@@ -198,7 +178,7 @@ post_op_attr get_post_attr(const char *path, nfs_fh3 nfh,
 {
     unfs3_fh_t *fh = (void *) nfh.data.data_val;
 
-    return get_post_ll(path, req);
+    return get_post(path, req);
 }
 
 /*

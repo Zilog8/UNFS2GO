@@ -35,7 +35,6 @@ typedef struct {
 int nfh_valid(nfs_fh3 fh);
 int fh_valid(unfs3_fh_t fh);
 
-unfs3_fh_t fh_comp_raw(const char *path, int need_dir);
 u_int fh_length(const unfs3_fh_t *fh);
 
 unfs3_fh_t *fh_extend(nfs_fh3 fh, uint64 ino, const char *path);

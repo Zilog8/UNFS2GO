@@ -9,7 +9,7 @@
  #include "readdir.c"
  
 /*
- * resolve a filename into a path
+ * resolve a filehandle into a path
  */
 char *fh_decomp(nfs_fh3 fh)
 {
@@ -52,6 +52,19 @@ nfsstat3 cat_name(const char *path, const char *name, char *result)
     sprintf(result, "%s/%s", path, name);
     return NFS3_OK;
 }
+
+nfsstat3 errLookup(int result)
+{
+	if (result == -1)
+		return NFS3ERR_ACCES;
+	else if (result == -2)
+		return NFS3ERR_NOENT;
+	else if (result == -3)
+		return NFS3ERR_INVAL;
+	else
+		return NFS3ERR_IO;
+}
+
 
 void *nfsproc3_null_3_svc(U(void *argp), U(struct svc_req *rqstp))
 {
@@ -114,7 +127,7 @@ SETATTR3res *nfsproc3_setattr_3_svc(SETATTR3args * argp,
     /* overlaps with resfail */
     result.SETATTR3res_u.resok.obj_wcc.before = pre;
     result.SETATTR3res_u.resok.obj_wcc.after =
-		get_post_ll(path, rqstp);
+		get_post(path, rqstp);
 
     return &result;
 }
@@ -133,26 +146,22 @@ LOOKUP3res *nfsproc3_lookup_3_svc(LOOKUP3args * argp, struct svc_req * rqstp)
     result.status = cat_name(path, argp->what.name, obj);
     if (result.status == NFS3_OK) {
 		res = go_lstat(obj, &buf);
-			if (res < 0){
-				if (res == -2) { 
-					errno = ENOENT;
-				}
-				result.status = lookup_err();
-			}	else {
-				fh = fh_extend(argp->what.dir, buf.st_ino, obj);
-
-				if (fh) {
-					result.LOOKUP3res_u.resok.object.data.data_len = fh_length(fh);
-					result.LOOKUP3res_u.resok.object.data.data_val = (char *) fh;
-					result.LOOKUP3res_u.resok.obj_attributes = get_post_buf(buf, rqstp);
-				} else {
+		if (res>-1) {
+			fh = fh_extend(argp->what.dir, buf.st_ino, obj);
+			if (fh) {
+				result.LOOKUP3res_u.resok.object.data.data_len = fh_length(fh);
+				result.LOOKUP3res_u.resok.object.data.data_val = (char *) fh;
+				result.LOOKUP3res_u.resok.obj_attributes = get_post_buf(buf, rqstp);
+			} else {
 				result.status = NFS3ERR_NAMETOOLONG;
-				}
 			}
+		} else {
+			result.status = errLookup(res);
+		}
     }
 	
-    /* overlaps with resfail */
-    result.LOOKUP3res_u.resok.dir_attributes = get_post_ll(path, rqstp);
+	/* overlaps with resfail */
+    result.LOOKUP3res_u.resok.dir_attributes = get_post(path, rqstp);
     return &result;
 }
 
@@ -164,24 +173,29 @@ ACCESS3res *nfsproc3_access_3_svc(ACCESS3args * argp, struct svc_req * rqstp)
     int newaccess = 0;
 
     path = fh_decomp(argp->object);
-    post = get_post(path, rqstp);
+	
+	go_statstruct buf;
+    if (go_lstat(path, &buf) < 0) {
+		post = error_attr;
+    } else {
+		post = get_post_buf(buf, rqstp);
+		//TODO: Fill this out based on the stated info in 'buf'
+		/* allow everything */
+		newaccess |= ACCESS3_READ | ACCESS3_MODIFY | ACCESS3_EXTEND | ACCESS3_EXECUTE;
 
-    /* allow everything */
-    newaccess |= ACCESS3_READ | ACCESS3_MODIFY | ACCESS3_EXTEND | ACCESS3_EXECUTE;
-
-    /* adjust if directory */
-    if (post.post_op_attr_u.attributes.type == NF3DIR) {
-	if (newaccess & (ACCESS3_READ | ACCESS3_EXECUTE))
-	    newaccess |= ACCESS3_LOOKUP;
-	if (newaccess & ACCESS3_MODIFY)
-	    newaccess |= ACCESS3_DELETE;
-	newaccess &= ~ACCESS3_EXECUTE;
-    }
-
+		/* adjust if directory */
+		if (post.post_op_attr_u.attributes.type == NF3DIR) {
+			if (newaccess & (ACCESS3_READ | ACCESS3_EXECUTE))
+				newaccess |= ACCESS3_LOOKUP;
+			if (newaccess & ACCESS3_MODIFY)
+				newaccess |= ACCESS3_DELETE;
+			newaccess &= ~ACCESS3_EXECUTE;
+		}
+	}
     result.status = NFS3_OK;
     result.ACCESS3res_u.resok.access = newaccess;
     result.ACCESS3res_u.resok.obj_attributes = post;
-
+	
     return &result;
 }
 
@@ -210,7 +224,7 @@ READLINK3res *nfsproc3_readlink_3_svc(READLINK3args * argp,
 
     /* overlaps with resfail */
     result.READLINK3res_u.resok.symlink_attributes =
-		get_post_ll(path, rqstp);
+		get_post(path, rqstp);
 
     return &result;
 }
@@ -219,7 +233,7 @@ READ3res *nfsproc3_read_3_svc(READ3args * argp, struct svc_req * rqstp)
 {
     static READ3res result;
     char *path;
-    int ores, res;
+    int res;
     static char buf[NFS_MAXDATA_TCP + 1];
     unsigned int maxdata;
 
@@ -228,20 +242,16 @@ READ3res *nfsproc3_read_3_svc(READ3args * argp, struct svc_req * rqstp)
     else
 	maxdata = NFS_MAXDATA_UDP;
 
-    go_statstruct stbuf;
-	path = fh_decomp(argp->file);
-	go_lstat(path, &stbuf);
-    result.status = is_reg(path);
+    path = fh_decomp(argp->file);
 
     /* if bigger than rtmax, truncate length */
     if (argp->count > maxdata)
 	argp->count = maxdata;
 
-    if (result.status == NFS3_OK) {
-	ores = go_open(path, UNFS3_FD_READ);
-	if (ores > -1) {
-	    /* read one more to check for eof */
-	    res = go_pread(path, buf, argp->count + 1, argp->offset);
+	/* read one more to check for eof */
+    res = go_pread(path, buf, argp->count + 1, argp->offset);
+	if (res > -1) {
+		result.status = NFS3_OK;
 
 	    /* eof if we could not read one more */
 	    result.READ3res_u.resok.eof = (res <= (int64) argp->count);
@@ -250,28 +260,16 @@ READ3res *nfsproc3_read_3_svc(READ3args * argp, struct svc_req * rqstp)
 	    if (!result.READ3res_u.resok.eof) {
 			res--;
 	    }
-
-	    if (res > -1) {
+		
 		result.READ3res_u.resok.count = res;
 		result.READ3res_u.resok.data.data_len = res;
 		result.READ3res_u.resok.data.data_val = buf;
-	    } else {
-		/* error during read() */
-
-		/* EINVAL means unreadable object */
-		if (errno == EINVAL)
-		    result.status = NFS3ERR_INVAL;
-		else
-		    result.status = NFS3ERR_IO;
-	    }
-	} else
-	    /* opening for read failed */
-	    result.status = read_err();
-    }
+	} else {
+			result.status = errLookup(res);
+	}
 
     /* overlaps with resfail */
-    result.READ3res_u.resok.file_attributes =
-		get_post_ll(path, rqstp);
+    result.READ3res_u.resok.file_attributes = get_post(path, rqstp);
     return &result;
 }
 
@@ -279,44 +277,24 @@ WRITE3res *nfsproc3_write_3_svc(WRITE3args * argp, struct svc_req * rqstp)
 {
     static WRITE3res result;
     char *path;
-    int ores, res;
-
-    go_statstruct stbuf;
-	path = fh_decomp(argp->file);
-	go_lstat(path, &stbuf);
+    int res;
 	pre_op_attr pre;
+
+	path = fh_decomp(argp->file);
+	
 	pre = get_pre(path);
-    result.status = join(is_reg(path), exports_rw());
-
-    if (result.status == NFS3_OK) {
-		ores = go_open(path, UNFS3_FD_WRITE);
-		if (ores != -1) {
-			res =
-			go_pwrite(path, argp->data.data_val, argp->data.data_len,
-					   argp->offset);
-
-			/* we always do fsync(), never fdatasync() */
-			if (argp->stable == DATA_SYNC)
-			argp->stable = FILE_SYNC;
-
-			if (res != -1) {
-			result.WRITE3res_u.resok.count = res;
-			result.WRITE3res_u.resok.committed = argp->stable;
-			memcpy(result.WRITE3res_u.resok.verf, wverf,
-				   NFS3_WRITEVERFSIZE);
-			} else {
-			/* error during write or close */
-			result.status = write_write_err();
-			}
-		} else
-			/* could not open for writing */
-			result.status = write_open_err();
-    }
+	res = go_pwrite(path, argp->data.data_val, argp->data.data_len, argp->offset);
+    if (res > -1) {
+		result.WRITE3res_u.resok.count = res;
+		result.WRITE3res_u.resok.committed = FILE_SYNC;
+		memcpy(result.WRITE3res_u.resok.verf, wverf, NFS3_WRITEVERFSIZE);
+    } else {
+			result.status = errLookup(res);
+	}
 
     /* overlaps with resfail */
     result.WRITE3res_u.resok.file_wcc.before = pre;
-    result.WRITE3res_u.resok.file_wcc.after = 
-		get_post_ll(path, rqstp);
+    result.WRITE3res_u.resok.file_wcc.after = get_post(path, rqstp);
     return &result;
 }
 
@@ -429,7 +407,7 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 	//fprintf(stderr,  "overlaps with resfail\n");
     result.CREATE3res_u.resok.dir_wcc.before = pre;
     result.CREATE3res_u.resok.dir_wcc.after = 
-		get_post_ll(path, rqstp);
+		get_post(path, rqstp);
 
     return &result;
 }
@@ -654,7 +632,7 @@ REMOVE3res *nfsproc3_remove_3_svc(REMOVE3args * argp, struct svc_req * rqstp)
     /* overlaps with resfail */
     result.REMOVE3res_u.resok.dir_wcc.before = pre;
     result.REMOVE3res_u.resok.dir_wcc.after = 
-		get_post_ll(path, rqstp);
+		get_post(path, rqstp);
     return &result;
 }
 
@@ -684,7 +662,7 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
     /* overlaps with resfail */
     result.RMDIR3res_u.resok.dir_wcc.before = pre;
     result.RMDIR3res_u.resok.dir_wcc.after = 
-		get_post_ll(path, rqstp);
+		get_post(path, rqstp);
     return &result;
 }
 
@@ -734,7 +712,7 @@ RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
     result.RENAME3res_u.resok.fromdir_wcc.after = post;
     result.RENAME3res_u.resok.todir_wcc.before = to_pre;
     result.RENAME3res_u.resok.todir_wcc.after = 
-		get_post_ll(to, rqstp);
+		get_post(to, rqstp);
 
     return &result;
 }
@@ -771,7 +749,7 @@ LINK3res *nfsproc3_link_3_svc(LINK3args * argp, struct svc_req * rqstp)
 
     /* overlaps with resfail */
     result.LINK3res_u.resok.file_attributes =
-		get_post_ll(old, rqstp);
+		get_post(old, rqstp);
     result.LINK3res_u.resok.linkdir_wcc.before = pre;
     result.LINK3res_u.resok.linkdir_wcc.after = post;
 
@@ -789,7 +767,7 @@ READDIR3res *nfsproc3_readdir_3_svc(READDIR3args * argp,
 	go_lstat(path, &stbuf);
     result = read_dir(path, argp->cookie, argp->cookieverf, argp->count);
     result.READDIR3res_u.resok.dir_attributes = 
-		get_post_ll(path, rqstp);
+		get_post(path, rqstp);
 
     return &result;
 }
@@ -913,21 +891,29 @@ COMMIT3res *nfsproc3_commit_3_svc(COMMIT3args * argp, struct svc_req * rqstp)
 {
     static COMMIT3res result;
     char *path;
-
-    go_statstruct stbuf;
+	int res;
+    go_statstruct buf;
+	
     path = fh_decomp(argp->file);
-	go_lstat(path, &stbuf);
-	pre_op_attr pre;
-	pre = get_pre(path);
-    result.status = join(is_reg(path), exports_rw());
-
-    if (result.status == NFS3_OK) {
+	
+	res = go_sync(path, &buf);
+		
+    if (res>-1) {
+		result.status = NFS3_OK;
 		memcpy(result.COMMIT3res_u.resok.verf, wverf, NFS3_WRITEVERFSIZE);
+	} else {
+		if (res == -1)
+			result.status = NFS3ERR_ACCES;
+		else if (res == -2)
+			result.status = NFS3ERR_NOENT;
+		else if (res == -3)
+			result.status = NFS3ERR_INVAL;
+		else
+			result.status = NFS3ERR_IO;
 	}
     /* overlaps with resfail */
-    result.COMMIT3res_u.resfail.file_wcc.before = pre;
-    result.COMMIT3res_u.resfail.file_wcc.after = 
-		get_post_ll(path, rqstp);
+    result.COMMIT3res_u.resfail.file_wcc.before = get_pre_buf(buf);
+    result.COMMIT3res_u.resfail.file_wcc.after = get_post_buf(buf, rqstp);
 
     return &result;
 }
