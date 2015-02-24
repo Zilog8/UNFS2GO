@@ -2,7 +2,6 @@ package sftpfs
 
 import (
 	"../minfs"
-	"errors"
 	"fmt"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
@@ -71,7 +70,7 @@ func (f *sftpFS) translate(path string) string {
 func (f *sftpFS) Close() error {
 	fmt.Println("sftpFS: Close")
 	if f.closed {
-		return errors.New("sftpFS error: Close: Already Closed")
+		return os.ErrInvalid
 	}
 	f.closed = true
 	f.sftpClient.Close()
@@ -83,12 +82,12 @@ func (f *sftpFS) Close() error {
 func (f *sftpFS) CreateFile(name string) error {
 	//fmt.Println("sftpFS: CreateFile:", name)
 	if f.closed {
-		return errors.New("sftpFS error: CreateFile: Already Closed")
+		return os.ErrInvalid
 	}
 	realname := f.translate(name)
 	fil, err := f.sftpClient.Create(realname)
 	if err != nil {
-		return err
+		return errorTranslate(err)
 	}
 	fil.Close()
 	return nil
@@ -97,24 +96,22 @@ func (f *sftpFS) CreateFile(name string) error {
 func (f *sftpFS) ReadDirectory(name string) ([]os.FileInfo, error) {
 	//fmt.Println("sftpFS: ReadDirectory:", name)
 	if f.closed {
-		return nil, errors.New("sftpFS error: ReadDirectory: Already Closed")
+		return nil, os.ErrInvalid
 	}
 	realname := f.translate(name)
-	return f.sftpClient.ReadDir(realname)
+	fi, err := f.sftpClient.ReadDir(realname)
+	return fi, errorTranslate(err)
 }
 
 func (f *sftpFS) Stat(name string) (os.FileInfo, error) {
 	//fmt.Println("sftpFS: Stat:", name)
 	if f.closed {
-		return nil, errors.New("sftpFS error: Stat: Already Closed")
+		return nil, os.ErrInvalid
 	}
 	realname := f.translate(name)
 	fi, err := f.sftpClient.Lstat(realname)
 	if err != nil {
-		if !strings.Contains(err.Error(), "not exist") {
-			fmt.Println("sftpFS error: Stat: Lstat failed:", err)
-		}
-		return nil, err
+		return nil, errorTranslate(err)
 	}
 	return fi, nil
 }
@@ -122,41 +119,39 @@ func (f *sftpFS) Stat(name string) (os.FileInfo, error) {
 func (f *sftpFS) CreateDirectory(name string) error {
 	//fmt.Println("sftpFS: CreateDirectory:", name)
 	if f.closed {
-		return errors.New("sftpFS error: CreateDirectory: Already Closed")
+		return os.ErrInvalid
 	}
 	realname := f.translate(name)
-	return f.sftpClient.Mkdir(realname)
+	return errorTranslate(f.sftpClient.Mkdir(realname))
 }
 
 func (f *sftpFS) SetAttribute(path string, attribute string, newvalue interface{}) error {
 	//fmt.Println("sftpFS: SetAttr:", attribute, "for", path, "to", newvalue)
 	if f.closed {
-		return errors.New("sftpFS error: SetAttribute: Already Closed")
+		return os.ErrInvalid
 	}
 	realname := f.translate(path)
+	err := os.ErrInvalid
 	switch attribute {
 	case "modtime":
-		return f.sftpClient.Chtimes(realname, time.Now(), newvalue.(time.Time))
+		err = f.sftpClient.Chtimes(realname, time.Now(), newvalue.(time.Time))
 	case "mode":
-		return f.sftpClient.Chmod(realname, newvalue.(os.FileMode))
+		err = f.sftpClient.Chmod(realname, newvalue.(os.FileMode))
 	case "size":
-		return f.sftpClient.Truncate(realname, newvalue.(int64))
-	case "own":
-		tIA := newvalue.([]int)
-		return f.sftpClient.Chown(realname, tIA[0], tIA[1])
+		err = f.sftpClient.Truncate(realname, newvalue.(int64))
 	}
-	return errors.New("SetAttribute Error: Unsupported attribute " + attribute)
+	return errorTranslate(err)
 }
 
 func (f *sftpFS) GetAttribute(path string, attribute string) (interface{}, error) {
 	//fmt.Println("sftpFS: GetAttr:", attribute, "for", path)
 	if f.closed {
-		return nil, errors.New("sftpFS error: GetAttribute: Already Closed")
+		return nil, os.ErrInvalid
 	}
 	realname := f.translate(path)
 	fi, err := f.Stat(realname)
 	if err != nil {
-		return nil, errors.New("GetAttribute Error Stat'n " + path + "(translated as " + realname + "):" + err.Error())
+		return nil, errorTranslate(err)
 	}
 	switch attribute {
 	case "modtime":
@@ -165,21 +160,18 @@ func (f *sftpFS) GetAttribute(path string, attribute string) (interface{}, error
 		return fi.Mode(), nil
 	case "size":
 		return fi.Size(), nil
+	default:
+		return nil, os.ErrInvalid
 	}
-	return nil, errors.New("GetAttribute Error: Unsupported attribute " + attribute)
 }
 
-func (f *sftpFS) Remove(name string, recursive bool) error {
+func (f *sftpFS) Remove(name string) error {
 	//fmt.Println("sftpFS: Remove:", name)
 	if f.closed {
-		return errors.New("sftpFS error: Remove: Already Closed")
+		return os.ErrInvalid
 	}
 	realname := f.translate(name)
-	if recursive {
-		//TODO: complete this function
-		return f.sftpClient.Remove(realname)
-	}
-	return f.sftpClient.Remove(realname)
+	return errorTranslate(f.sftpClient.Remove(realname))
 }
 
 func (f *sftpFS) String() string {
@@ -189,47 +181,60 @@ func (f *sftpFS) String() string {
 func (f *sftpFS) Move(oldpath string, newpath string) error {
 	//fmt.Println("sftpFS: Move:", oldpath, "to", newpath)
 	if f.closed {
-		return errors.New("sftpFS error: Move: Already Closed")
+		return os.ErrInvalid
 	}
 	orname := f.translate(oldpath)
 	nrname := f.translate(newpath)
-	return f.sftpClient.Rename(orname, nrname)
+	return errorTranslate(f.sftpClient.Rename(orname, nrname))
 }
 
 func (f *sftpFS) ReadFile(name string, b []byte, off int64) (int, error) {
 	//fmt.Println("sftpFS: ReadFile:", name)
 	if f.closed {
-		return 0, errors.New("sftpFS error: ReadFile: Already Closed")
+		return 0, os.ErrInvalid
 	}
 	realname := f.translate(name)
 	fh, err := f.sftpClient.Open(realname)
 	if err != nil {
-		return 0, err
+		return 0, errorTranslate(err)
 	}
 	defer fh.Close()
 
 	_, err = fh.Seek(off, os.SEEK_SET)
 	if err != nil {
-		return 0, err
+		return 0, errorTranslate(err)
 	}
-	return fh.Read(b)
+	retVal, err := fh.Read(b)
+	return retVal, errorTranslate(err)
 }
 
 func (f *sftpFS) WriteFile(name string, b []byte, off int64) (int, error) {
 	//fmt.Println("sftpFS: WriteFile:", name)
 	if f.closed {
-		return 0, errors.New("sftpFS error: WriteFile: Already Closed")
+		return 0, os.ErrInvalid
 	}
 	realname := f.translate(name)
 	fh, err := f.sftpClient.OpenFile(realname, os.O_WRONLY)
 	if err != nil {
-		return 0, err
+		return 0, errorTranslate(err)
 	}
 	defer fh.Close()
 
 	_, err = fh.Seek(off, os.SEEK_SET)
 	if err != nil {
-		return 0, err
+		return 0, errorTranslate(err)
 	}
-	return fh.Write(b)
+	retVal, err := fh.Write(b)
+	return retVal, errorTranslate(err)
+}
+
+func errorTranslate(sftperr error) error {
+	switch {
+	case sftperr == nil:
+		return nil
+	case strings.Contains(sftperr.Error(), "SSH_FX_NO_SUCH_FILE"):
+		return os.ErrNotExist
+	default:
+		return sftperr
+	}
 }

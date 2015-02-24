@@ -48,11 +48,16 @@ static post_op_attr error_attr = { FALSE };
 post_op_attr get_post(const char *path, struct svc_req * req)
 {
 	go_statstruct buf;
-    if (go_lstat(path, &buf) < 0) {
+    if (go_lstat(path, &buf) != NFS3_OK) {
 		return error_attr;
     }
 	
     return get_post_buf(buf, req);
+}
+
+post_op_attr get_post_err()
+{
+	return error_attr;
 }
 
 /*
@@ -61,12 +66,6 @@ post_op_attr get_post(const char *path, struct svc_req * req)
 pre_op_attr get_pre_buf(go_statstruct buf)
 {
     pre_op_attr result;
-	
-    if (buf.st_dev==666) { //stat failed, so buf is a lie
-		result.attributes_follow = FALSE;
-		return result;
-    }
-
     result.attributes_follow = TRUE;
 
     result.pre_op_attr_u.attributes.size = buf.st_size;
@@ -86,7 +85,7 @@ pre_op_attr get_pre(const char *path)
     pre_op_attr result;
 	go_statstruct buf;
 	
-    if (go_lstat(path, &buf) < 0) {
+    if (go_lstat(path, &buf) != NFS3_OK) {
 	result.attributes_follow = FALSE;
 	return result;
     }
@@ -179,200 +178,6 @@ post_op_attr get_post_attr(const char *path, nfs_fh3 nfh,
     unfs3_fh_t *fh = (void *) nfh.data.data_val;
 
     return get_post(path, req);
-}
-
-/*
- * setting of time, races with local filesystem
- *
- * there is no futimes() function in POSIX or Linux
- */
-static nfsstat3 set_time(const char *path, go_statstruct buf, sattr3 new)
-{
-    time_t new_atime, new_mtime;
-    struct utimbuf utim;
-    int res;
-
-    /* set atime and mtime */
-    if (new.atime.set_it != DONT_CHANGE || new.mtime.set_it != DONT_CHANGE) {
-
-	/* compute atime to set */
-	if (new.atime.set_it == SET_TO_SERVER_TIME)
-	    new_atime = time(NULL);
-	else if (new.atime.set_it == SET_TO_CLIENT_TIME)
-	    new_atime = new.atime.set_atime_u.atime.seconds;
-	else			       /* DONT_CHANGE */
-	    new_atime = buf.st_atime;
-
-	/* compute mtime to set */
-	if (new.mtime.set_it == SET_TO_SERVER_TIME)
-	    new_mtime = time(NULL);
-	else if (new.mtime.set_it == SET_TO_CLIENT_TIME)
-	    new_mtime = new.mtime.set_mtime_u.mtime.seconds;
-	else			       /* DONT_CHANGE */
-	    new_mtime = buf.st_mtime;
-
-	utim.actime = new_atime;
-	utim.modtime = new_mtime;
-
-	res = go_utime(path, &utim);
-	if (res == -1)
-	    return setattr_err();
-    }
-
-    return NFS3_OK;
-}
-
-/*
- * race unsafe setting of attributes
- */
-static nfsstat3 set_attr_unsafe(const char *path, nfs_fh3 nfh, sattr3 new)
-{
-    unfs3_fh_t *fh = (void *) nfh.data.data_val;
-    uid_t new_uid;
-    gid_t new_gid;
-    go_statstruct buf;
-    int res;
-
-    res = go_lstat(path, &buf);
-    if (res == -2)
-	return NFS3ERR_NOENT;
-    if (res == -1)
-	return NFS3ERR_STALE;
-
-    /* check local fs race */
-    if (buf.st_ino != fh->ino)
-	return NFS3ERR_STALE;
-
-    /* set file size */
-    if (new.size.set_it == TRUE) {
-	res = go_truncate(path, new.size.set_size3_u.size);
-	if (res == -1)
-	    return setattr_err();
-    }
-
-    /* set uid and gid */
-    if (new.uid.set_it == TRUE || new.gid.set_it == TRUE) {
-	if (new.uid.set_it == TRUE)
-	    new_uid = new.uid.set_uid3_u.uid;
-	else
-	    new_uid = -1;
-	if (new_uid == buf.st_uid)
-	    new_uid = -1;
-
-	if (new.gid.set_it == TRUE)
-	    new_gid = new.gid.set_gid3_u.gid;
-	else
-	    new_gid = -1;
-
-	res = go_lchown(path, new_uid, new_gid);
-	if (res == -1)
-	    return setattr_err();
-    }
-
-    /* set mode */
-    if (new.mode.set_it == TRUE) {
-	res = go_chmod(path, new.mode.set_mode3_u.mode);
-	if (res == -1)
-	    return setattr_err();
-    }
-
-    return set_time(path, buf, new);
-}
-
-/*
- * set attributes of an object
- */
-nfsstat3 set_attr(const char *path, nfs_fh3 nfh, sattr3 new)
-{
-    unfs3_fh_t *fh = (void *) nfh.data.data_val;
-    int res, ores;
-    uid_t new_uid;
-    gid_t new_gid;
-    go_statstruct buf;
-
-    res = go_lstat(path, &buf);
-    if (res == -2)
-	return NFS3ERR_NOENT;
-    if (res == -1)
-	return NFS3ERR_STALE;
-
-    /* 
-     * don't open(2) device nodes, it could trigger
-     * module loading on the server
-     */
-    if (S_ISBLK(buf.st_mode) || S_ISCHR(buf.st_mode))
-	return set_attr_unsafe(path, nfh, new);
-
-#ifdef S_ISLNK
-    /* 
-     * opening a symlink would open the underlying file,
-     * don't try to do that
-     */
-    if (S_ISLNK(buf.st_mode))
-	return set_attr_unsafe(path, nfh, new);
-#endif
-
-    /* 
-     * open object for atomic setting of attributes
-     */
-    ores = go_open(path, UNFS3_FD_WRITE);
-    if (ores == -1)
-	ores = go_open(path, UNFS3_FD_READ);
-
-    if (ores == -1)
-	return set_attr_unsafe(path, nfh, new);
-
-    res = go_lstat(path, &buf);
-    if (res == -2) {
-	return NFS3ERR_NOENT;
-    }
-    if (res == -1) {
-	return NFS3ERR_STALE;
-    }
-
-    /* check local fs race */
-    if (fh->ino != buf.st_ino) {
-	return NFS3ERR_STALE;
-    }
-
-    /* set file size */
-    if (new.size.set_it == TRUE) {
-	res = go_truncate(path, new.size.set_size3_u.size);
-	if (res == -1) {
-	    return setattr_err();
-	}
-    }
-
-    /* set uid and gid */
-    if (new.uid.set_it == TRUE || new.gid.set_it == TRUE) {
-	if (new.uid.set_it == TRUE)
-	    new_uid = new.uid.set_uid3_u.uid;
-	else
-	    new_uid = -1;
-	if (new_uid == buf.st_uid)
-	    new_uid = -1;
-
-	if (new.gid.set_it == TRUE)
-	    new_gid = new.gid.set_gid3_u.gid;
-	else
-	    new_gid = -1;
-
-	res = go_lchown(path, new_uid, new_gid);
-	if (res == -1) {
-	    return setattr_err();
-	}
-    }
-
-    /* set mode */
-    if (new.mode.set_it == TRUE) {
-	res = go_chmod(path, new.mode.set_mode3_u.mode);
-	if (res == -1) {
-	    return setattr_err();
-	}
-    }
-
-    /* finally, set times */
-    return set_time(path, buf, new);
 }
 
 /*

@@ -87,26 +87,6 @@ nfsstat3 readlink_err(void)
 	return NFS3ERR_IO;
 }
 
-nfsstat3 create_err(void)
-{
-    if (errno == EACCES)
-	return NFS3ERR_ACCES;
-    else if (is_stale())
-	return NFS3ERR_STALE;
-    else if (errno == EROFS)
-	return NFS3ERR_ROFS;
-    else if (errno == ENOSPC)
-	return NFS3ERR_NOSPC;
-    else if (errno == EEXIST)
-	return NFS3ERR_EXIST;
-#ifdef EDQUOT
-    else if (errno == EDQUOT)
-	return NFS3ERR_DQUOT;
-#endif
-    else
-	return NFS3ERR_IO;
-}
-
 nfsstat3 rename_err(void)
 {
     if (errno == EISDIR)
@@ -164,26 +144,6 @@ nfsstat3 rmdir_err(void)
 		//fprintf(stderr, "rmdir error failed, returned remove_err\n");
 	return remove_err();
 	}
-}
-
-nfsstat3 setattr_err(void)
-{
-    if (errno == EPERM)
-	return NFS3ERR_PERM;
-    else if (errno == EROFS)
-	return NFS3ERR_ROFS;
-    else if (is_stale())
-	return NFS3ERR_STALE;
-    else if (errno == EACCES)
-	return NFS3ERR_ACCES;
-#ifdef EDQUOT
-    else if (errno == EDQUOT)
-	return NFS3ERR_DQUOT;
-#endif
-    else if (errno == EINVAL)
-	return NFS3ERR_INVAL;
-    else
-	return NFS3ERR_IO;
 }
 
 nfsstat3 readdir_err(void)

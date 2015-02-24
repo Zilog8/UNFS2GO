@@ -10,13 +10,18 @@ import (
 )
 
 type MinFS interface {
+	//Create a file. Should throw an error if file already exists.
 	CreateFile(name string) error
+	//Write to a file. Should throw an error if file doesn't exists.
 	WriteFile(name string, b []byte, off int64) (int, error)
+	//Read from a file.
 	ReadFile(name string, b []byte, off int64) (int, error)
+	//Create a directory. Should throw an error if directory already exists.
 	CreateDirectory(name string) error
 	ReadDirectory(name string) ([]os.FileInfo, error) //No "." or ".." entries allowed
 	Move(oldpath string, newpath string) error
-	Remove(name string, recursive bool) error
+	//Whether or not a Remove on a non-empty directory succeeds is implementation dependant
+	Remove(name string) error
 	Stat(name string) (os.FileInfo, error)
 	String() string
 	GetAttribute(path string, attribute string) (interface{}, error)

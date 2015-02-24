@@ -150,7 +150,7 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	return &result;
     }
 
-    if ((exports_options(buf) == -1) || !go_accept_mount((svc_getcaller(rqstp->rq_xprt))->sin_addr, buf)) {
+    if ((exports_options(buf) == -1) || go_accept_mount((svc_getcaller(rqstp->rq_xprt))->sin_addr, buf) != NFS3_OK) {
 		/* not exported to this host*/
 	fprintf(stderr, "Mount svc: Not exported to this host at all\n");
 	result.fhs_status = MNT3ERR_ACCES;
@@ -159,7 +159,7 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	
 	go_statstruct stbuf;	
 
-    if (go_lstat(buf, &stbuf)<0 || !S_ISDIR(stbuf.st_mode)) {
+    if (go_lstat(buf, &stbuf)!=NFS3_OK || !S_ISDIR(stbuf.st_mode)) {
 		fprintf(stderr, "%s attempted to mount non-directory\n", inet_ntoa(get_remote(rqstp)));
 		result.fhs_status = MNT3ERR_NOTDIR;
 		return &result;

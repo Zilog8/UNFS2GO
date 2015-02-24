@@ -47,10 +47,6 @@ int go_closedir(go_DIR * dir) {
 	return 0;
 }
 
-int go_utime(const char *path, const struct utimbuf *times) {
-    return go_utime_helper(path, times->actime, times->modtime);
-}
-
 int go_rmdir(const char *path){
 	int retV = go_rmdir_helper(path);
     if (retV == -2) {
@@ -76,10 +72,6 @@ int go_mksocket() {
 
 int go_readlink(const char *path, char *buf, size_t bufsiz) {
 	return go_nop("readlink");	
-}
-
-int go_store_create_verifier(char *obj, createverf3 verf){
-    return go_nop("store_create_verifier");
 }
 
 int go_check_create_verifier(go_statstruct * buf, createverf3 verf){

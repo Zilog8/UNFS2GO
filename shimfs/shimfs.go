@@ -187,7 +187,14 @@ func (f *shimFS) WriteFile(name string, b []byte, offset int64) (int, error) {
 	if nFC == nil { //file was deleted recently
 		return 0, os.ErrNotExist
 	}
-	return f.mfs.WriteFile(name, b, offset)
+
+	go func() {
+		nFC.chunkLock.RLock()
+		f.mfs.WriteFile(name, nFC.slice(), nFC.off)
+		nFC.synced = true
+		nFC.chunkLock.RUnlock()
+	}()
+	return len(b), nil
 }
 
 func (f *shimFS) CreateFile(name string) error {
@@ -262,7 +269,7 @@ func (f *shimFS) Move(oldpath string, newpath string) error {
 	return err
 }
 
-func (f *shimFS) Remove(name string, recursive bool) error {
+func (f *shimFS) Remove(name string) error {
 	if f.closed {
 		return errors.New("ShimFS: Remove: Already Closed")
 	}
@@ -271,26 +278,12 @@ func (f *shimFS) Remove(name string, recursive bool) error {
 	if err != nil {
 		return err
 	}
-	err = f.mfs.Remove(name, recursive)
+	err = f.mfs.Remove(name)
 	if err != nil {
 		return err
 	}
 	f.filecacheLock.Lock()
 	delete(f.filecache, file.path())
-
-	if file.IsDir() && recursive {
-		dirpath := file.path()
-		if !strings.HasSuffix(dirpath, "/") {
-			dirpath += "/"
-		}
-
-		for path, sfi := range f.filecache {
-			if strings.HasPrefix(path, dirpath) {
-				delete(f.filecache, path)
-				sfi.delete()
-			}
-		}
-	}
 	f.filecacheLock.Unlock()
 	file.delete()
 

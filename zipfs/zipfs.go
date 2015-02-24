@@ -20,7 +20,6 @@ package zipfs // import "golang.org/x/tools/godoc/vfs/zipfs"
 import (
 	"../minfs"
 	"archive/zip"
-	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -77,8 +76,12 @@ type zipFS struct {
 }
 
 func (fs *zipFS) Close() error {
-	fs.list = nil
-	return fs.ReadCloser.Close()
+	if fs.list == nil {
+		return os.ErrInvalid
+	} else {
+		fs.list = nil
+		return fs.ReadCloser.Close()
+	}
 }
 
 func zipPath(name string) string {
@@ -93,7 +96,7 @@ func (fs *zipFS) stat(abspath string) (int, zipFI, error) {
 	i, exact := fs.list.lookup(abspath)
 	if i < 0 {
 		// abspath has leading '/' stripped - print it explicitly
-		return 0, zipFI{}, fmt.Errorf("file not found: /%s", abspath)
+		return 0, zipFI{}, os.ErrNotExist
 	}
 	_, name := path.Split(abspath)
 	var file *zip.File
@@ -110,7 +113,7 @@ func (fs *zipFS) readDir(abspath string) ([]os.FileInfo, error) {
 		return nil, err
 	}
 	if !fi.IsDir() {
-		return nil, fmt.Errorf("ReadDir: %s is not a directory", abspath)
+		return nil, os.ErrInvalid
 	}
 
 	var list []os.FileInfo
@@ -215,7 +218,7 @@ func (fs *zipFS) ReadFile(name string, b []byte, off64 int64) (int, error) {
 		return 0, err
 	}
 	if fi.IsDir() {
-		return 0, fmt.Errorf("Open: %s is a directory", name)
+		return 0, os.ErrInvalid
 	}
 	r, err := fi.file.Open()
 	if err != nil {
@@ -245,7 +248,7 @@ func (fs *zipFS) Move(oldpath string, newpath string) error {
 	return os.ErrPermission
 }
 
-func (fs *zipFS) Remove(name string, recursive bool) error {
+func (fs *zipFS) Remove(name string) error {
 	return os.ErrPermission
 }
 
@@ -261,7 +264,7 @@ func (fs *zipFS) Stat(abspath string) (os.FileInfo, error) {
 func (fs *zipFS) GetAttribute(path string, attribute string) (interface{}, error) {
 	fi, err := fs.Stat(path)
 	if err != nil {
-		return nil, errors.New("GetAttribute Error Stat'n " + path + ":" + err.Error())
+		return nil, err
 	}
 	switch attribute {
 	case "modtime":
@@ -271,7 +274,7 @@ func (fs *zipFS) GetAttribute(path string, attribute string) (interface{}, error
 	case "size":
 		return fi.Size(), nil
 	}
-	return nil, errors.New("GetAttribute Error: Unsupported attribute " + attribute)
+	return nil, os.ErrInvalid
 }
 
 func (fs *zipFS) SetAttribute(path string, attribute string, newvalue interface{}) error {

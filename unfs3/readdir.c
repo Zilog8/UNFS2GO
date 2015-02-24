@@ -66,7 +66,6 @@ READDIR3res read_dir(const char *path, cookie3 cookie, cookieverf3 verf,
     cookie3 upper;
     static entry3 entry[MAX_ENTRIES];
     go_statstruct buf;
-    int res;
     go_dirstream *search;
     struct dirent *this;
     count3 i, real_count;
@@ -137,12 +136,8 @@ READDIR3res read_dir(const char *path, cookie3 cookie, cookieverf3 verf,
 	    else
 		sprintf(scratch, "%s/%s", path, this->d_name);
 
-	    res = go_lstat(scratch, &buf);
-	    if (res <0) {
-			if (res == -2) {
-				errno = ENOENT;
-			}
-			result.status = readdir_err();
+	    result.status = go_lstat(scratch, &buf);
+	    if (result.status != NFS3_OK) {
 			go_closedir(search);
 			return result;
 	    }

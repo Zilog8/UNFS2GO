@@ -115,10 +115,8 @@ post_op_fh3 fh_extend_type(nfs_fh3 fh, const char *path, unsigned int type)
 {
     post_op_fh3 result;
     go_statstruct buf;
-    int res;
 
-    res = go_lstat(path, &buf);
-    if (res < 0 || (buf.st_mode & type) != type) {
+    if (go_lstat(path, &buf) != NFS3_OK || (buf.st_mode & type) != type) {
 		return result;
     }
 
