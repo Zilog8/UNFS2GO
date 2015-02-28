@@ -4,6 +4,7 @@ package main
 //#include "unfs3/daemon.h"
 import "C"
 import (
+	"encoding/binary"
 	"fmt"
 	"os"
 	pathpkg "path"
@@ -37,6 +38,75 @@ func go_accept_mount(addr C.int, path *C.char) C.int {
 	return retVal
 }
 
+//export go_readdir_full
+func go_readdir_full(dirpath *C.char, names unsafe.Pointer, entries unsafe.Pointer, maxpathlen C.int, maxentries C.int) C.int {
+	mp := int(maxpathlen)
+	me := int(maxentries)
+
+	nslice := &reflect.SliceHeader{Data: uintptr(names), Len: mp * me, Cap: mp * me}
+	newNames := *(*[]byte)(unsafe.Pointer(nslice))
+
+	eslice := &reflect.SliceHeader{Data: uintptr(entries), Len: 24 * me, Cap: 24 * me}
+	newEntries := *(*[]byte)(unsafe.Pointer(eslice))
+
+	dirp := pathpkg.Clean("/" + C.GoString(dirpath))
+
+	arr, err := ns.ReadDirectory(dirp)
+
+	retVal, known := errTranslator(err)
+	if !known {
+		fmt.Println("Error on go_readdir_full of", dirp, "):", err)
+	}
+
+	nbCount := 0 //bytes written to names buffer
+	ebCount := 0 //bytes written to entry buffer
+
+	namepointer := uint32(uintptr(names))
+	entriespointer := uint32(uintptr(entries))
+
+	//Null out the first entry, in case there are none
+	for i := 0; i < 24; i++ {
+		newEntries[i] = byte(0)
+	}
+
+	for i, fi := range arr {
+
+		if i == me { //If we've reached max entries, break
+			break
+		}
+
+		if i != 0 { //only if this isn't the first entry
+			//Put a pointer to this entry as previous entry's Next
+			binary.LittleEndian.PutUint32(newEntries[ebCount-4:], entriespointer+uint32(ebCount))
+		}
+
+		fp := pathpkg.Clean(dirp + "/" + fi.Name())
+
+		//Put FileID
+		fd := fddb.GetFD(fp)
+		binary.LittleEndian.PutUint64(newEntries[ebCount:], uint64(fd))
+		ebCount += 8
+
+		//Put Pointer to Name
+		binary.LittleEndian.PutUint32(newEntries[ebCount:], namepointer+uint32(nbCount))
+		ebCount += 4
+
+		//Actually write Name to namebuf
+		bytCount := copy(newNames[nbCount:], []byte(fi.Name()))
+		newNames[nbCount+bytCount] = byte(0) //null terminate
+		nbCount += mp
+
+		//Put Cookie
+		binary.LittleEndian.PutUint64(newEntries[ebCount:], uint64(i+1))
+		ebCount += 8
+
+		//Null out this pointer to "next" in case we're the last entry
+		binary.LittleEndian.PutUint32(newEntries[ebCount:], uint32(0))
+		ebCount += 4
+	}
+
+	return retVal
+}
 //export go_readdir_helper
 func go_readdir_helper(dirpath *C.char, entryIndex C.int) *C.char {
 
