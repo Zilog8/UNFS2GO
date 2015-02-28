@@ -8,7 +8,7 @@
 #define UNFS3_DAEMON_H
 
 #include "nfs.h"
-#include "../backend_go.h"
+#include "../gosupport.h"
 #include "mount.h"
 #include "fh.h"
 #include "exports_new.h"

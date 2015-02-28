@@ -75,17 +75,4 @@ typedef struct _go_statstruct
         time_t  st_mtime;
         time_t  st_ctime;
 } go_statstruct;
-
-typedef struct _go_DIR
-{
-   char *directory_path;
-   uint32 entryIndex;
-   uint32 count;
-} go_DIR;
-
-typedef struct dirent
-{
-    char *d_name;
-} dirent;
-
 #endif

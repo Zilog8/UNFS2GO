@@ -694,9 +694,9 @@ FSINFO3res *nfsproc3_fsinfo_3_svc(FSINFO3args * argp, struct svc_req * rqstp)
     result.FSINFO3res_u.resok.wtmult = 4096;
     result.FSINFO3res_u.resok.dtpref = 4096;
     result.FSINFO3res_u.resok.maxfilesize = ~0ULL;
-    result.FSINFO3res_u.resok.time_delta.seconds = go_time_delta_seconds;
+    result.FSINFO3res_u.resok.time_delta.seconds = 1;
     result.FSINFO3res_u.resok.time_delta.nseconds = 0;
-    result.FSINFO3res_u.resok.properties = go_fsinfo_properties;
+    result.FSINFO3res_u.resok.properties = FSF3_LINK | FSF3_SYMLINK | FSF3_HOMOGENEOUS | FSF3_CANSETTIME;
 
     return &result;
 }
@@ -716,8 +716,7 @@ PATHCONF3res *nfsproc3_pathconf_3_svc(PATHCONF3args * argp,
     result.PATHCONF3res_u.resok.name_max = NFS_MAXPATHLEN;
     result.PATHCONF3res_u.resok.no_trunc = TRUE;
     result.PATHCONF3res_u.resok.chown_restricted = FALSE;
-    result.PATHCONF3res_u.resok.case_insensitive =
-	go_pathconf_case_insensitive;
+    result.PATHCONF3res_u.resok.case_insensitive = FALSE;
     result.PATHCONF3res_u.resok.case_preserving = TRUE;
 
     return &result;
