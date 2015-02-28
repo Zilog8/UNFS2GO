@@ -242,7 +242,8 @@ WRITE3res *nfsproc3_write_3_svc(WRITE3args * argp, struct svc_req * rqstp)
 		result.status = NFS3_OK;
 		result.WRITE3res_u.resok.count = res;
 		result.WRITE3res_u.resok.committed = FILE_SYNC;
-		memcpy(result.WRITE3res_u.resok.verf, wverf, NFS3_WRITEVERFSIZE);
+		uint64 zero = (uint64) 0;
+		memcpy(result.WRITE3res_u.resok.verf, &zero, NFS3_WRITEVERFSIZE);
     } else {
 		//because a successful pwrite can return any non-negative number
 		//it can't return standard NF3 errors (which are all positive)
@@ -487,7 +488,6 @@ REMOVE3res *nfsproc3_remove_3_svc(REMOVE3args * argp, struct svc_req * rqstp)
     result.status = join(cat_name(path, argp->object.name, obj), exports_rw());
 
     if (result.status == NFS3_OK) {
-        change_readdir_cookie();
 		result.status = go_remove(obj);
     }
 
@@ -510,7 +510,6 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
     result.status = join(cat_name(path, argp->object.name, obj), exports_rw());
 
     if (result.status == NFS3_OK) {
-        change_readdir_cookie();
 	    result.status = go_rmdir(obj);
     }
 
@@ -546,7 +545,6 @@ RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
 		result.status = join(cat_name(to, argp->to.name, to_obj), NFS3_OK);
 
 	if (result.status == NFS3_OK) {
-	    change_readdir_cookie();
 			result.status = go_rename(from_obj, to_obj);
 	}
     }
@@ -708,7 +706,8 @@ COMMIT3res *nfsproc3_commit_3_svc(COMMIT3args * argp, struct svc_req * rqstp)
 	result.status = go_sync(path, &buf);
 		
     if (result.status == NFS3_OK) {
-		memcpy(result.COMMIT3res_u.resok.verf, wverf, NFS3_WRITEVERFSIZE);
+		uint64 zero = (uint64) 0;
+		memcpy(result.COMMIT3res_u.resok.verf, &zero, NFS3_WRITEVERFSIZE);
     /* overlaps with resfail */
     result.COMMIT3res_u.resfail.file_wcc.before = get_pre_buf(buf);
     result.COMMIT3res_u.resfail.file_wcc.after = get_post_buf(buf, rqstp);

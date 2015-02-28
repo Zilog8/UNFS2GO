@@ -148,8 +148,7 @@ post_op_attr get_post_buf(go_statstruct buf, struct svc_req * req)
 
     result.post_op_attr_u.attributes.size = buf.st_size;
     result.post_op_attr_u.attributes.used = buf.st_blocks * 512;
-    result.post_op_attr_u.attributes.rdev.specdata1 =
-	(buf.st_rdev >> 8) & 0xFF;
+    result.post_op_attr_u.attributes.rdev.specdata1 = (buf.st_rdev >> 8) & 0xFF;
     result.post_op_attr_u.attributes.rdev.specdata2 = buf.st_rdev & 0xFF;
     result.post_op_attr_u.attributes.fsid = buf.st_dev;
 
@@ -172,8 +171,7 @@ post_op_attr get_post_buf(go_statstruct buf, struct svc_req * req)
 /*
  * return post-operation attributes, using fh for old dev/ino
  */
-post_op_attr get_post_attr(const char *path, nfs_fh3 nfh,
-			   struct svc_req * req)
+post_op_attr get_post_attr(const char *path, nfs_fh3 nfh, struct svc_req * req)
 {
     unfs3_fh_t *fh = (void *) nfh.data.data_val;
 

@@ -26,14 +26,6 @@ void daemon_exit(int);
 struct in_addr get_remote(struct svc_req *);
 int get_socket_type(struct svc_req *rqstp);
 
-/* write verifier */
-extern writeverf3 wverf;
-void regenerate_write_verifier(void);
-
-/* readdir cookie */
-extern cookie3 rcookie;
-void change_readdir_cookie(void);
-
 /* options */
 extern int	opt_detach;
 extern char	*opt_exports;

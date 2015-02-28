@@ -422,6 +422,10 @@ func go_pwrite(path *C.char, buf unsafe.Pointer, count C.int, offset C.int) C.in
 		if !known {
 			fmt.Println("Error on pwrite of", pp, "(start =", off, "count =", counted, "copied =", copiedBytes, "):", err)
 		}
+		//because a successful pwrite can return any non-negative number
+		//we can't return standard NF3 errors (which are all positive)
+		//so we send them as a negative to indicate it's an error,
+		//and the recipient will have to negative it again to get the original error.
 		return -retVal
 	}
 	return C.int(copiedBytes)
@@ -444,6 +448,10 @@ func go_pread(path *C.char, buf unsafe.Pointer, count C.int, offset C.int) C.int
 		if !known {
 			fmt.Println("Error on pread of", pp, "(start =", off, "count =", counted, "copied =", copiedBytes, "):", err)
 		}
+		//because a successful pread can return any non-negative number
+		//we can't return standard NF3 errors (which are all positive)
+		//so we send them as a negative to indicate it's an error,
+		//and the recipient will have to negative it again to get the original error.
 		return -retVal
 	}
 	return C.int(copiedBytes)

@@ -21,12 +21,6 @@
 
 #define UNFS_NAME "UNFS3 to Golang Backend\n"
 
-/* write verifier */
-writeverf3 wverf;
-
-/* readdir cookie */
-cookie3 rcookie = 0;
-
 /* options and default values */
 int opt_detach = FALSE;
 char *opt_exports = "/etc/exports";
@@ -307,13 +301,10 @@ static void nfs3_program_3(struct svc_req *rqstp, register SVCXPRT * transp)
     if (result != NULL &&
 	!svc_sendreply(transp, (xdrproc_t) _xdr_result, result)) {
 	svcerr_systemerr(transp);
-	fprintf(stderr, "%s\n",
-		    "unable to send RPC reply");
+		fprintf(stderr, "%s\n", "unable to send NFS RPC reply");
 	}
-    if (!svc_freeargs
-	(transp, (xdrproc_t) _xdr_argument, (caddr_t) & argument)) {
-	fprintf(stderr, "%s\n",
-		    "unable to free XDR arguments");
+    if (!svc_freeargs (transp, (xdrproc_t) _xdr_argument, (caddr_t) & argument)) {
+		fprintf(stderr, "%s\n", "unable to free NFS XDR arguments");
 	}
     return;
 }
@@ -389,11 +380,10 @@ static void mountprog_3(struct svc_req *rqstp, register SVCXPRT * transp)
     if (result != NULL &&
 	!svc_sendreply(transp, (xdrproc_t) _xdr_result, result)) {
 	svcerr_systemerr(transp);
-	fprintf(stderr, "unable to send RPC reply\n");
+		fprintf(stderr, "unable to send Mount RPC reply\n");
     }
-    if (!svc_freeargs
-	(transp, (xdrproc_t) _xdr_argument, (caddr_t) & argument)) {
-	fprintf(stderr, "unable to free XDR arguments\n");
+    if (!svc_freeargs (transp, (xdrproc_t) _xdr_argument, (caddr_t) & argument)) {
+		fprintf(stderr, "unable to free Mount XDR arguments\n");
     }
     return;
 }
@@ -596,30 +586,9 @@ static void unfs3_svc_run(void)
     }
 }
 
-/*
- * Generate write verifier based on PID and current time
- */
-void regenerate_write_verifier(void)
-{
-    *(wverf + 0) = (uint32) getpid();
-    *(wverf + 0) ^= rand();
-    *(wverf + 4) = (uint32) time(NULL);
-}
-
-/*
- * Change readdir cookie value
- */
-void change_readdir_cookie(void)
-{
-    rcookie = rcookie >> 32;
-    ++rcookie;
-    rcookie = rcookie << 32;
-}
-
 static void start(void) {
 	//printf("start\n");
 	register SVCXPRT *tcptransp = NULL, *udptransp = NULL;
-    regenerate_write_verifier();
     go_init();
 	//printf("backend inited\n");
 	setvbuf(stdout, NULL, _IOLBF, 0);
