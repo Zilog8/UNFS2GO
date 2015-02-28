@@ -1,61 +1,6 @@
 #include <utime.h> //utimbuf
 #include <errno.h>
 
-char *go_readdir_helper(char *, int);
-
-go_DIR *go_opendir(const char *name) {
-	int count = go_opendir_helper(name);
-	if(count!=-1) {
-		go_DIR *ret;
-		ret = malloc(sizeof(go_DIR));
-		ret->entryIndex = 0;
-		ret->count = count;
-		ret->directory_path = malloc(strlen(name)+1);
-		strcpy(ret->directory_path, name);
-		//fprintf(stderr, "opendir on %s\n",  ret->directory_path);
-		return ret;
-	}
-	fprintf(stderr, "opendir failed on %s\n",  name);
-	return NULL;
-}
-
-dirent *go_readdir(go_DIR * dir) {
-		//fprintf(stderr, "readdir 1 %s\n",  dir->directory_path);
-	
-	if (dir->entryIndex >= dir->count) {
-		//fprintf(stderr, "readdir too far on %s\n", dir->directory_path);
-		return NULL;
-	}
-		//fprintf(stderr, "readdir 2 %s\n",  dir->directory_path);
-	
-	char *dn = go_readdir_helper(dir->directory_path,dir->entryIndex);
-	if(strcmp(dn,"")!=0) {
-		//fprintf(stderr, "readdir probably succeded %s to %s\n", dir->directory_path, dn);
-		dirent *ret;
-		ret = malloc(sizeof(dirent));
-		ret->d_name = dn;
-		dir->entryIndex = 1 + dir->entryIndex;
-		return ret;
-	}
-	fprintf(stderr, "readdir probably failed %s to %s\n", dir->directory_path, dn);
-	return NULL;
-}
-
-int go_closedir(go_DIR * dir) {
-	free(dir->directory_path); //I think this it how it works
-    free(dir);
-	return 0;
-}
-
-int go_rmdir(const char *path){
-	int retV = go_rmdir_helper(path);
-    if (retV == -2) {
-		errno = ENOTEMPTY;
-		return -1;
-	}
-	return retV;
-}
-
 int go_statvfs(const char *path, go_statvfsstruct * buf){
 	errno = ENOSYS;
     return -1;

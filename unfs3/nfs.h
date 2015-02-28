@@ -1008,4 +1008,34 @@ extern int nfs3_program_3_freeresult (SVCXPRT *, xdrproc_t, caddr_t);
 #define	W_OK		0x02	/* test for write permission */
 #define	R_OK		0x04	/* test for read permission */
 
+
+/*
+ * maximum number of entries in readdir results
+ *
+ * this is 4096 / 24 (the minimum size of an entry3)
+ */
+#define MAX_ENTRIES 170
+
+/*
+ * static READDIR3resok size with XDR overhead
+ *
+ * 88 bytes attributes, 8 bytes verifier, 4 bytes value_follows for
+ * first entry, 4 bytes eof flag
+ */
+#define RESOK_SIZE 104
+
+/*
+ * static entry3 size with XDR overhead
+ *
+ * 8 bytes fileid, 4 bytes name length, 8 bytes cookie, 4 byte value_follows
+ */
+#define ENTRY_SIZE 24
+
+/*
+ * size of a name with XDR overhead
+ *
+ * XDR pads to multiple of 4 bytes
+ */
+#define NAME_SIZE(x) (((strlen((x))+3)/4)*4)
+
 #endif /* !_NFS_PROT_H_RPCGEN */

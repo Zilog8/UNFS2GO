@@ -41,6 +41,12 @@ func go_accept_mount(addr C.int, path *C.char) C.int {
 	return retVal
 }
 
+//Readdir results are in the form of two char arrays: One for the entries, and one for the actual file names
+//the names array is just the file names, places at every maxpathlen bytes
+//the entries array is made of entry structs, which are 24-bytes long, every 24 bytes:
+//[8-byte inode][4-byte pointer to filename]
+//[8-byte cookie (entry index in directory list)][4-byte pointer to next entry if any]
+
 //export go_readdir_full
 func go_readdir_full(dirpath *C.char, names unsafe.Pointer, entries unsafe.Pointer, maxpathlen C.int, maxentries C.int) C.int {
 	mp := int(maxpathlen)
@@ -124,36 +130,6 @@ func go_fgetpath(fd C.int) *C.char {
 	}
 }
 
-//export go_readdir_helper
-func go_readdir_helper(dirpath *C.char, entryIndex C.int) *C.char {
-
-	pp := pathpkg.Clean("/" + C.GoString(dirpath))
-	index := int(entryIndex)
-	arr, err := ns.ReadDirectory(pp)
-
-	if err != nil {
-		fmt.Println("Error go_readdir_helper path=", pp, "index=", index, "error=", err)
-		return C.CString("")
-	}
-	if index >= len(arr) {
-		fmt.Println("Error go_readdir_helper path=", pp, "index=", index, "error=", "index too high for directory contents")
-		return C.CString("")
-	}
-	return C.CString(arr[index].Name())
-}
-
-//export go_opendir_helper
-func go_opendir_helper(path *C.char) C.int {
-	pp := pathpkg.Clean("/" + C.GoString(path))
-	arr, err := ns.ReadDirectory(pp)
-
-	if err != nil {
-		fmt.Println("Error go_opendir_helper path=", pp, "error=", err)
-		return -1
-	}
-	return C.int(len(arr))
-}
-
 //export go_exists
 func go_exists(path *C.char) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
@@ -176,8 +152,13 @@ func errTranslator(err error) (C.int, bool) {
 	case os.ErrExist:
 		return C.NFS3ERR_EXIST, true
 	default:
+		switch {
+		case strings.Contains(err.Error(), "not empty"):
+			return C.NFS3ERR_NOTEMPTY, true
+		default:
 		return C.NFS3ERR_IO, false
 	}
+}
 }
 
 //export go_lstat
@@ -337,7 +318,9 @@ func go_createover(pathname *C.char, flags C.int, mode C.int) C.int {
 //export go_remove
 func go_remove(path *C.char) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
+
 	st, err := ns.Stat(pp)
+
 	if err != nil {
 		retVal, known := errTranslator(err)
 		if !known {
@@ -346,9 +329,8 @@ func go_remove(path *C.char) C.int {
 		return retVal
 	}
 
-	//it seems most shells already check for this, but no harm being extra careful.
 	if st.IsDir() {
-		fmt.Println("Error removing file: ", pp, "\n Is a directory.")
+		//fmt.Println("Error removing file: ", pp, "\n Is a directory.")
 		return C.NFS3ERR_ISDIR
 	}
 
@@ -360,32 +342,31 @@ func go_remove(path *C.char) C.int {
 	return retVal
 }
 
-//export go_rmdir_helper
-func go_rmdir_helper(path *C.char) C.int {
+//export go_rmdir
+func go_rmdir(path *C.char) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
 
 	st, err := ns.Stat(pp)
 
 	if err != nil {
-		//fmt.Println("Error removing directory: ", pp, "\n", err)
-		return -1
+		retVal, known := errTranslator(err)
+		if !known {
+			fmt.Println("Error removing directory: ", pp, "\n", err)
+		}
+		return retVal
 	}
 
-	//it seems most shells already check for this, but no harm being extra careful.
 	if !st.IsDir() {
 		//fmt.Println("Error removing directory: ", pp, "\n Not a directory.")
-		return -1
+		return C.NFS3ERR_NOTDIR
 	}
 
 	err = ns.Remove(pp)
-	if err != nil {
-		//fmt.Println("Error removing directory: ", pp, "\n", err)
-		if strings.Contains(err.Error(), "directory not empty") {
-			return -2
-		}
-		return -1
+	retVal, known := errTranslator(err)
+	if !known {
+		fmt.Println("Error removing directory: ", pp, "\n", err)
 	}
-	return 1
+	return retVal
 }
 
 //export go_mkdir

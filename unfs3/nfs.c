@@ -6,7 +6,7 @@
  * see file LICENSE for license details
  */
  #include <utime.h> //utimbuf
- #include "readdir.c"
+ #include "error.c"
  
 /*
  * cat an object name onto a path, checking for illegal input
@@ -502,9 +502,9 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
     static RMDIR3res result;
     char *path;
     char obj[NFS_MAXPATHLEN];
+	pre_op_attr pre;
 
     path = fh_decomp(argp->object.dir);
-	pre_op_attr pre;
 	pre = get_pre(path);
     
     result.status = join(cat_name(path, argp->object.name, obj), exports_rw());
@@ -595,14 +595,42 @@ READDIR3res *nfsproc3_readdir_3_svc(READDIR3args * argp, struct svc_req * rqstp)
     static READDIR3res result;
     char *path;
     path = fh_decomp(argp->dir);
-    result = read_dir(path, argp->cookie, argp->cookieverf, argp->count);
+
+	READDIR3resok resok;
+    static entry3 entry[MAX_ENTRIES];
+    count3 count, real_count;
+    static char obj[NFS_MAXPATHLEN * MAX_ENTRIES];
+
+    /* we refuse to return more than 4k from READDIR */
+    if (count > 4096)
+	count = 4096;
+
+    /* account for size of information heading resok structure */
+    real_count = RESOK_SIZE;
+	
+	//TODO: Take into account the cookie asked for (argp->cookie)
+	//TODO: Restrain returned bytes by 'count' (argp->count) and 'real_count'
+	go_readdir_full(path, obj, entry, NFS_MAXPATHLEN, MAX_ENTRIES);
+	
+	if (entry[0].name)
+		resok.reply.entries = &entry[0];
+    else
+		resok.reply.entries = NULL;
+
+	//TODO: Give a clear signal of eof vs. not eof
+		resok.reply.eof = TRUE;
+	
+    uint64 zero = (uint64) 0;
+	memcpy(resok.cookieverf, &zero, NFS3_COOKIEVERFSIZE);
+
+    result.status = NFS3_OK;
+    result.READDIR3res_u.resok = resok;	
     result.READDIR3res_u.resok.dir_attributes = get_post(path, rqstp);
 
     return &result;
 }
 
-READDIRPLUS3res *nfsproc3_readdirplus_3_svc(U(READDIRPLUS3args * argp),
-					    U(struct svc_req * rqstp))
+READDIRPLUS3res *nfsproc3_readdirplus_3_svc(U(READDIRPLUS3args * argp), U(struct svc_req * rqstp))
 {
     static READDIRPLUS3res result;
 
