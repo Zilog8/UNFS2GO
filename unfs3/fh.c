@@ -71,19 +71,38 @@ u_int fh_length(const unfs3_fh_t * fh)
 }
 
 /*
- * extend a filehandle with a given device, inode, and path
+ * resolve a filehandle into a path
  */
-unfs3_fh_t *fh_extend(nfs_fh3 nfh, uint64 ino, const char *path)
+char *fh_decomp(nfs_fh3 fh)
 {
-    static unfs3_fh_t new;
-    unfs3_fh_t *fh = (void *) nfh.data.data_val;
+    if (!nfh_valid(fh)) {
+		return NULL;
+    }
 
-    memcpy(&new, fh, fh_length(fh));
+    unfs3_fh_t *obj = (void *) fh.data.data_val;
 
-    new.ino = ino;
+	if (obj->len == 0)   //root
+		return "/";
 	
+	if (obj->len <= 33)  //small path <=32 bytes, plus add 1 for null-termination
+		return obj->path;
+	
+	//long path, look it up
+	return go_fgetpath(obj->ino);
+}
+	
+//Create new filehandle
+unfs3_fh_t *fh_comp(uint64 ino, const char *path)
+{
+	static unfs3_fh_t new;
+	new.ino = ino;
+	if (strlen(path)<=32) {      //small path <=32 bytes
 	strcpy(new.path,path);
     new.len = (unsigned)strlen(new.path) + 1;
+	} else {                    //long path, don't even bother to add
+		new.len = 34;           //doesn't matter the length as long as it's greater than 33 (32 + null)
+		strcpy(new.path,"");
+	}
 
     return &new;
 }
@@ -91,12 +110,12 @@ unfs3_fh_t *fh_extend(nfs_fh3 nfh, uint64 ino, const char *path)
 /*
  * get post_op_fh3 extended by device, inode, and path
  */
-post_op_fh3 fh_extend_post(nfs_fh3 fh, uint64 ino, const char *path)
+post_op_fh3 fh_comp_post(uint64 ino, const char *path)
 {
     post_op_fh3 post;
     unfs3_fh_t *new;
 
-    new = fh_extend(fh, ino, path);
+    new = fh_comp(ino, path);
 
     if (new) {
 	post.handle_follows = TRUE;
@@ -111,7 +130,7 @@ post_op_fh3 fh_extend_post(nfs_fh3 fh, uint64 ino, const char *path)
 /*
  * extend a filehandle given a path and needed type
  */
-post_op_fh3 fh_extend_type(nfs_fh3 fh, const char *path, unsigned int type)
+post_op_fh3 fh_comp_type(const char *path, unsigned int type)
 {
     post_op_fh3 result;
     go_statstruct buf;
@@ -120,5 +139,5 @@ post_op_fh3 fh_extend_type(nfs_fh3 fh, const char *path, unsigned int type)
 		return result;
     }
 
-    return fh_extend_post(fh, buf.st_ino, path);
+    return fh_comp_post(buf.st_ino, path);
 }

@@ -19,7 +19,10 @@ var fddb fdCache //translator for file descriptors
 
 //export go_init
 func go_init() C.int {
-	fddb = fdCache{FDlistLock: new(sync.RWMutex), PathMap: make(map[string]int), FDcounter: 100}
+	fddb = fdCache{FDlistLock: new(sync.RWMutex),
+		PathMapA:  make(map[string]int),
+		PathMapB:  make(map[int]string),
+		FDcounter: 100}
 	return 1
 }
 
@@ -107,6 +110,20 @@ func go_readdir_full(dirpath *C.char, names unsafe.Pointer, entries unsafe.Point
 
 	return retVal
 }
+
+//export go_fgetpath
+func go_fgetpath(fd C.int) *C.char {
+	gofd := int(fd)
+	path, err := fddb.GetPath(gofd)
+	if err != nil {
+		fmt.Println("Error on go_fgetpath (fd =", gofd, " of ", fddb.FDcounter, ");", err)
+		return nil
+	} else {
+		//fmt.Println("go_fgetpath: Returning '", path, "' for fd:", gofd)
+		return C.CString(path)
+	}
+}
+
 //export go_readdir_helper
 func go_readdir_helper(dirpath *C.char, entryIndex C.int) *C.char {
 
@@ -399,7 +416,6 @@ func go_pwrite(path *C.char, buf unsafe.Pointer, count C.int, offset C.int) C.in
 	//prepare the provided buffer for use
 	slice := &reflect.SliceHeader{Data: uintptr(buf), Len: counted, Cap: counted}
 	cbuf := *(*[]byte)(unsafe.Pointer(slice))
-
 	copiedBytes, err := ns.WriteFile(pp, cbuf, off)
 	if err != nil && !strings.Contains(strings.ToLower(err.Error()), "eof") {
 		retVal, known := errTranslator(err)
@@ -448,25 +464,44 @@ func go_sync(path *C.char, buf *C.go_statstruct) C.int {
 }
 
 type fdCache struct {
-	PathMap    map[string]int
+	PathMapA   map[string]int
+	PathMapB   map[int]string
 	FDcounter  int
 	FDlistLock *sync.RWMutex
 }
 
+func (f *fdCache) GetPath(fd int) (string, error) {
+	if fd < 100 {
+		return "", os.ErrInvalid
+	}
+	f.FDlistLock.RLock()
+	path, ok := f.PathMapB[fd]
+	f.FDlistLock.RUnlock()
+	if ok {
+		return path, nil
+	} else {
+		return "", os.ErrInvalid
+	}
+}
+
 func (f *fdCache) ReplacePath(oldpath, newpath string, isdir bool) {
 	f.FDlistLock.Lock()
-	fd := f.PathMap[oldpath]
-	delete(f.PathMap, oldpath)
-	f.PathMap[newpath] = fd
+	fd := f.PathMapA[oldpath]
+	delete(f.PathMapA, oldpath)
+	delete(f.PathMapB, fd)
+	f.PathMapA[newpath] = fd
+	f.PathMapB[fd] = newpath
 
 	if isdir {
 		op := oldpath + "/"
 		np := newpath + "/"
-		for path, fh := range f.PathMap {
+		for path, fh := range f.PathMapA {
 			if strings.HasPrefix(path, op) {
-				delete(f.PathMap, path)
+				delete(f.PathMapA, path)
+				delete(f.PathMapB, fh)
 				path = strings.Replace(path, op, np, 1)
-				f.PathMap[path] = fh
+				f.PathMapA[path] = fh
+				f.PathMapB[fh] = path
 			}
 		}
 	}
@@ -475,7 +510,7 @@ func (f *fdCache) ReplacePath(oldpath, newpath string, isdir bool) {
 
 func (f *fdCache) GetFD(path string) int {
 	f.FDlistLock.RLock()
-	i, ok := f.PathMap[path]
+	i, ok := f.PathMapA[path]
 	f.FDlistLock.RUnlock()
 	if ok {
 		return i
@@ -483,7 +518,8 @@ func (f *fdCache) GetFD(path string) int {
 	f.FDlistLock.Lock()
 	f.FDcounter++
 	newFD := f.FDcounter
-	f.PathMap[path] = newFD
+	f.PathMapA[path] = newFD
+	f.PathMapB[newFD] = path
 	f.FDlistLock.Unlock()
 	return newFD
 }

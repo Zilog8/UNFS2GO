@@ -9,23 +9,6 @@
  #include "readdir.c"
  
 /*
- * resolve a filehandle into a path
- */
-char *fh_decomp(nfs_fh3 fh)
-{
-    if (!nfh_valid(fh)) {
-		return NULL;
-    }
-	
-    unfs3_fh_t *obj = (void *) fh.data.data_val;
-	
-	if (obj->len == 0) //root
-		return "/";
-
-    return obj->path;
-}
-
-/*
  * cat an object name onto a path, checking for illegal input
  */
 nfsstat3 cat_name(const char *path, const char *name, char *result)
@@ -122,12 +105,11 @@ LOOKUP3res *nfsproc3_lookup_3_svc(LOOKUP3args * argp, struct svc_req * rqstp)
     go_statstruct buf;
 
 	path = fh_decomp(argp->what.dir);
-
     result.status = cat_name(path, argp->what.name, obj);
     if (result.status == NFS3_OK) {
 		result.status = go_lstat(obj, &buf);
 		if (result.status == NFS3_OK) {
-			fh = fh_extend(argp->what.dir, buf.st_ino, obj);
+			fh = fh_comp(buf.st_ino, obj);
 			if (fh) {
 				result.LOOKUP3res_u.resok.object.data.data_len = fh_length(fh);
 				result.LOOKUP3res_u.resok.object.data.data_val = (char *) fh;
@@ -302,7 +284,7 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 
 	if (result.status ==  NFS3_OK) {
 			result.status = go_lstat(obj, &buf);
-			result.CREATE3res_u.resok.obj = fh_extend_post(argp->where.dir, buf.st_ino, obj);
+			result.CREATE3res_u.resok.obj = fh_comp_post(buf.st_ino, obj);
 			result.CREATE3res_u.resok.obj_attributes = get_post_buf(buf, rqstp);
     }
 
@@ -328,7 +310,7 @@ MKDIR3res *nfsproc3_mkdir_3_svc(MKDIR3args * argp, struct svc_req * rqstp)
     if (result.status == NFS3_OK) {
 		result.status = go_mkdir(obj, create_mode(argp->attributes));
 		if (result.status == NFS3_OK){
-			result.MKDIR3res_u.resok.obj = fh_extend_type(argp->where.dir, obj, S_IFDIR);
+			result.MKDIR3res_u.resok.obj = fh_comp_type(obj, S_IFDIR);
 	    result.MKDIR3res_u.resok.obj_attributes = get_post(obj, rqstp);
 	}
     }
@@ -371,7 +353,7 @@ SYMLINK3res *nfsproc3_symlink_3_svc(SYMLINK3args * argp,
 	umask(0);
 		if (result.status == NFS3_OK) {
 	    result.SYMLINK3res_u.resok.obj =
-		fh_extend_type(argp->where.dir, obj, S_IFLNK);
+		fh_comp_type(obj, S_IFLNK);
 	    result.SYMLINK3res_u.resok.obj_attributes =
 		get_post(obj, rqstp);
 	}
@@ -478,8 +460,7 @@ MKNOD3res *nfsproc3_mknod_3_svc(MKNOD3args * argp, struct svc_req * rqstp)
 			result.status = go_mksocket(obj, new_mode);	/* socket */
 
 		if (result.status == NFS3_OK) {
-	    result.MKNOD3res_u.resok.obj =
-		fh_extend_type(argp->where.dir, obj, type_to_mode(argp->what.type));
+	    result.MKNOD3res_u.resok.obj = fh_comp_type(obj, type_to_mode(argp->what.type));
 	    result.MKNOD3res_u.resok.obj_attributes = get_post(obj, rqstp);
 	}
     }
@@ -611,16 +592,13 @@ LINK3res *nfsproc3_link_3_svc(LINK3args * argp, struct svc_req * rqstp)
     return &result;
 }
 
-READDIR3res *nfsproc3_readdir_3_svc(READDIR3args * argp,
-				    struct svc_req * rqstp)
+READDIR3res *nfsproc3_readdir_3_svc(READDIR3args * argp, struct svc_req * rqstp)
 {
     static READDIR3res result;
     char *path;
-
     path = fh_decomp(argp->dir);
     result = read_dir(path, argp->cookie, argp->cookieverf, argp->count);
-    result.READDIR3res_u.resok.dir_attributes = 
-		get_post(path, rqstp);
+    result.READDIR3res_u.resok.dir_attributes = get_post(path, rqstp);
 
     return &result;
 }

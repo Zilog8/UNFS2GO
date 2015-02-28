@@ -118,7 +118,7 @@ void *mountproc_null_3_svc(U(void *argp), U(struct svc_req *rqstp))
 mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 {
     char buf[PATH_MAX];
-    static unfs3_fh_t fh;
+    unfs3_fh_t *fh;
     static mountres3 result;
     static int auth = AUTH_UNIX;
     int authenticated = 1;
@@ -165,15 +165,13 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 		return &result;
     }
 	
-	fh.ino = stbuf.st_ino;
-	strcpy(fh.path,buf);
-	fh.len = (unsigned)strlen(fh.path) + 1;
+	fh = fh_comp(stbuf.st_ino, buf);
 	
     add_mount(dpath, rqstp);
 
     result.fhs_status = MNT3_OK;
-    result.mountres3_u.mountinfo.fhandle.fhandle3_len = fh_length(&fh);
-    result.mountres3_u.mountinfo.fhandle.fhandle3_val = (char *) &fh;
+    result.mountres3_u.mountinfo.fhandle.fhandle3_len = fh_length(fh);
+    result.mountres3_u.mountinfo.fhandle.fhandle3_val = (char *) fh;
     result.mountres3_u.mountinfo.auth_flavors.auth_flavors_len = 1;
     result.mountres3_u.mountinfo.auth_flavors.auth_flavors_val = &auth;
 	

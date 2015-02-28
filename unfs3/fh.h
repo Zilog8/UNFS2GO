@@ -11,7 +11,7 @@
 #define FH_MINLEN 9
 
 /* maximum depth of pathname described by filehandle */
-#define FH_MAXLEN (256 - FH_MINLEN)
+#define FH_MAXLEN (64 - FH_MINLEN)
 
 #ifdef __GNUC__
 typedef struct {
@@ -37,7 +37,8 @@ int fh_valid(unfs3_fh_t fh);
 
 u_int fh_length(const unfs3_fh_t *fh);
 
-unfs3_fh_t *fh_extend(nfs_fh3 fh, uint64 ino, const char *path);
-post_op_fh3 fh_extend_post(nfs_fh3 fh, uint64 ino, const char *path);
-post_op_fh3 fh_extend_type(nfs_fh3 fh, const char *path, unsigned int type);
+char *fh_decomp(nfs_fh3 fh);
+unfs3_fh_t *fh_comp(uint64 ino, const char *path);
+post_op_fh3 fh_comp_post(uint64 ino, const char *path);
+post_op_fh3 fh_comp_type(const char *path, unsigned int type);
 #endif
