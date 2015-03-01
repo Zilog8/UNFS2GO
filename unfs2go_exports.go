@@ -130,14 +130,6 @@ func go_fgetpath(fd C.int) *C.char {
 	}
 }
 
-//export go_exists
-func go_exists(path *C.char) C.int {
-	pp := pathpkg.Clean("/" + C.GoString(path))
-	_, err := ns.Stat(pp)
-	retVal, _ := errTranslator(err)
-	return retVal
-}
-
 //bool is true if error recognized, otherwise false
 func errTranslator(err error) (C.int, bool) {
 	switch err {
@@ -156,9 +148,9 @@ func errTranslator(err error) (C.int, bool) {
 		case strings.Contains(err.Error(), "not empty"):
 			return C.NFS3ERR_NOTEMPTY, true
 		default:
-		return C.NFS3ERR_IO, false
+			return C.NFS3ERR_IO, false
+		}
 	}
-}
 }
 
 //export go_lstat

@@ -11,8 +11,6 @@
 #include <rpc/rpc.h>
 #include <errno.h>
 #include "daemon.h"
-#include "../gosupport.c"
-#include "exports_new.c"
 #include "fh.c"
 #include "xdr.c"
 #include "attr.c"
@@ -300,7 +298,7 @@ static void nfs3_program_3(struct svc_req *rqstp, register SVCXPRT * transp)
     result = (*local) ((char *) &argument, rqstp);
     if (result != NULL &&
 	!svc_sendreply(transp, (xdrproc_t) _xdr_result, result)) {
-	svcerr_systemerr(transp);
+		svcerr_systemerr(transp);
 		fprintf(stderr, "%s\n", "unable to send NFS RPC reply");
 	}
     if (!svc_freeargs (transp, (xdrproc_t) _xdr_argument, (caddr_t) & argument)) {
@@ -363,8 +361,7 @@ static void mountprog_3(struct svc_req *rqstp, register SVCXPRT * transp)
 	case MOUNTPROC_EXPORT:
 	    _xdr_argument = (xdrproc_t) xdr_void;
 	    _xdr_result = (xdrproc_t) xdr_exports;
-	    local =
-		(char *(*)(char *, struct svc_req *)) mountproc_export_3_svc;
+	    local = (char *(*)(char *, struct svc_req *)) mountproc_export_3_svc;
 	    break;
 
 	default:
@@ -379,7 +376,7 @@ static void mountprog_3(struct svc_req *rqstp, register SVCXPRT * transp)
     result = (*local) ((char *) &argument, rqstp);
     if (result != NULL &&
 	!svc_sendreply(transp, (xdrproc_t) _xdr_result, result)) {
-	svcerr_systemerr(transp);
+		svcerr_systemerr(transp);
 		fprintf(stderr, "unable to send Mount RPC reply\n");
     }
     if (!svc_freeargs (transp, (xdrproc_t) _xdr_argument, (caddr_t) & argument)) {

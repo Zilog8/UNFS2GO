@@ -4,8 +4,6 @@
  * (C) 2004, Pascal Schmidt
  * see file LICENSE for license details
  */
- #include <utime.h> //utimbuf
- #include "error.c"
 
 /*
  * find stat bit corresponding to given NFS file type
@@ -166,16 +164,6 @@ post_op_attr get_post_buf(go_statstruct buf, struct svc_req * req)
     result.post_op_attr_u.attributes.ctime.nseconds = 0;
 
     return result;
-}
-
-/*
- * return post-operation attributes, using fh for old dev/ino
- */
-post_op_attr get_post_attr(const char *path, nfs_fh3 nfh, struct svc_req * req)
-{
-    unfs3_fh_t *fh = (void *) nfh.data.data_val;
-
-    return get_post(path, req);
 }
 
 /*

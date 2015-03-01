@@ -5,9 +5,7 @@
  * Copyright 2014 Karl Mikaelsson <derfian@cendio.se> for Cendio AB
  * see file LICENSE for license details
  */
- #include <utime.h> //utimbuf
- #include "error.c"
- 
+
 /*
  * cat an object name onto a path, checking for illegal input
  */
@@ -88,7 +86,7 @@ SETATTR3res *nfsproc3_setattr_3_svc(SETATTR3args * argp, struct svc_req * rqstp)
 			mtres = go_modtime(path, new.mtime.set_mtime_u.mtime.seconds);
 	}
 		
-	result.status = join3(sres,mres,mtres);
+	result.status = (sres != NFS3_OK) ? sres : (mres != NFS3_OK) ? mres : mtres;
 	
     /* overlaps with resfail */
     result.SETATTR3res_u.resok.obj_wcc.before = pre;
@@ -161,20 +159,11 @@ ACCESS3res *nfsproc3_access_3_svc(ACCESS3args * argp, struct svc_req * rqstp)
 }
 
 READLINK3res *nfsproc3_readlink_3_svc(READLINK3args * argp, struct svc_req * rqstp)
-{
+{	//TODO: test that this is being rejected correctly
     static READLINK3res result;
-    char *path;
-    static char buf[NFS_MAXPATHLEN];
-
-    path = fh_decomp(argp->symlink);
-
-    result.status = go_readlink(path, buf, NFS_MAXPATHLEN - 1);
-    if (result.status = NFS3_OK){
-		result.READLINK3res_u.resok.data = buf;
-    }
-
-    /* overlaps with resfail */
-    result.READLINK3res_u.resok.symlink_attributes = get_post(path, rqstp);
+    result.status = NFS3ERR_NOTSUPP;
+    
+    result.READLINK3res_u.resfail.symlink_attributes.attributes_follow = FALSE;
 
     return &result;
 }
@@ -233,7 +222,7 @@ WRITE3res *nfsproc3_write_3_svc(WRITE3args * argp, struct svc_req * rqstp)
     char *path;
     int res;
 	pre_op_attr pre;
-
+	
 	path = fh_decomp(argp->file);
 	
 	pre = get_pre(path);
@@ -271,7 +260,7 @@ CREATE3res *nfsproc3_create_3_svc(CREATE3args * argp, struct svc_req * rqstp)
 	pre_op_attr pre;
 	pre = get_pre(dirpath);
 
-    result.status = join(cat_name(dirpath, argp->where.name, obj), exports_rw());
+    result.status = cat_name(dirpath, argp->where.name, obj);
 
     if (argp->how.mode != EXCLUSIVE) {
 	new_attr = argp->how.createhow3_u.obj_attributes;
@@ -301,176 +290,45 @@ MKDIR3res *nfsproc3_mkdir_3_svc(MKDIR3args * argp, struct svc_req * rqstp)
     static MKDIR3res result;
     char *path;
     pre_op_attr pre;
-    post_op_attr post;
     char obj[NFS_MAXPATHLEN];
 
     path = fh_decomp(argp->where.dir);
     pre = get_pre(path);
-    result.status = join(cat_name(path, argp->where.name, obj), exports_rw());
+    result.status = cat_name(path, argp->where.name, obj);
 
     if (result.status == NFS3_OK) {
 		result.status = go_mkdir(obj, create_mode(argp->attributes));
 		if (result.status == NFS3_OK){
 			result.MKDIR3res_u.resok.obj = fh_comp_type(obj, S_IFDIR);
-	    result.MKDIR3res_u.resok.obj_attributes = get_post(obj, rqstp);
-	}
+			result.MKDIR3res_u.resok.obj_attributes = get_post(obj, rqstp);
+		}
     }
-
-    post = get_post_attr(path, argp->where.dir, rqstp);
 
     /* overlaps with resfail */
     result.MKDIR3res_u.resok.dir_wcc.before = pre;
-    result.MKDIR3res_u.resok.dir_wcc.after = post;
+    result.MKDIR3res_u.resok.dir_wcc.after = get_post(path, rqstp);
 
     return &result;
 }
 
-SYMLINK3res *nfsproc3_symlink_3_svc(SYMLINK3args * argp,
-				    struct svc_req * rqstp)
-{
+SYMLINK3res *nfsproc3_symlink_3_svc(SYMLINK3args * argp, struct svc_req * rqstp)
+{	//TODO: test that this is being rejected correctly
     static SYMLINK3res result;
-    char *path;
-    pre_op_attr pre;
-    post_op_attr post;
-    char obj[NFS_MAXPATHLEN];
-    mode_t new_mode;
+    result.status = NFS3ERR_NOTSUPP;
 
-    path = fh_decomp(argp->where.dir);
-    pre = get_pre(path);
-    result.status = join(cat_name(path, argp->where.name, obj), exports_rw());
-
-    if (argp->symlink.symlink_attributes.mode.set_it == TRUE)
-	new_mode = create_mode(argp->symlink.symlink_attributes);
-    else {
-	/* default rwxrwxrwx */
-	new_mode =
-	    S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP | S_IXGRP |
-	    S_IROTH | S_IWOTH | S_IXOTH;
-    }
-
-    if (result.status == NFS3_OK) {
-	umask(~new_mode);
-		result.status = go_symlink(argp->symlink.symlink_data, obj);
-	umask(0);
-		if (result.status == NFS3_OK) {
-	    result.SYMLINK3res_u.resok.obj =
-		fh_comp_type(obj, S_IFLNK);
-	    result.SYMLINK3res_u.resok.obj_attributes =
-		get_post(obj, rqstp);
-	}
-    }
-
-    post = get_post_attr(path, argp->where.dir, rqstp);
-
-    /* overlaps with resfail */
-    result.SYMLINK3res_u.resok.dir_wcc.before = pre;
-    result.SYMLINK3res_u.resok.dir_wcc.after = post;
+    result.SYMLINK3res_u.resfail.dir_wcc.before.attributes_follow = FALSE;
+    result.SYMLINK3res_u.resfail.dir_wcc.after.attributes_follow = FALSE;
 
     return &result;
-}
-
-/*
- * create Unix socket
- */
-static int mksocket(const char *path, mode_t mode)
-{
-    int res, sock;
-    struct sockaddr_un addr;
-
-    sock = socket(PF_UNIX, SOCK_STREAM, 0);
-    addr.sun_family = AF_UNIX;
-    strcpy(addr.sun_path, path);
-    res = sock;
-    if (res != -1) {
-	umask(~mode);
-	res =
-	    bind(sock, (struct sockaddr *) &addr,
-		 sizeof(addr.sun_family) + strlen(addr.sun_path));
-	umask(0);
-	close(sock);
-    }
-    return res;
-}
-
-/*
- * check and process arguments to MKNOD procedure
- */
-static nfsstat3 mknod_args(mknoddata3 what, const char *obj, mode_t * mode,
-			   dev_t * dev)
-{
-    sattr3 attr;
-
-    /* determine attributes */
-    switch (what.type) {
-	case NF3REG:
-	case NF3DIR:
-	case NF3LNK:
-	    return NFS3ERR_INVAL;
-	case NF3SOCK:
-	    if (strlen(obj) + 1 > UNIX_PATH_MAX)
-		return NFS3ERR_NAMETOOLONG;
-	    /* fall thru */
-	case NF3FIFO:
-	    attr = what.mknoddata3_u.pipe_attributes;
-	    break;
-	case NF3BLK:
-	case NF3CHR:
-	    attr = what.mknoddata3_u.device.dev_attributes;
-	    *dev = (what.mknoddata3_u.device.spec.specdata1 << 8)
-		+ what.mknoddata3_u.device.spec.specdata2;
-	    break;
-    }
-
-    *mode = create_mode(attr);
-
-    /* adjust mode for creation of device special files */
-    switch (what.type) {
-	case NF3CHR:
-	    *mode |= S_IFCHR;
-	    break;
-	case NF3BLK:
-	    *mode |= S_IFBLK;
-	    break;
-	default:
-	    break;
-    }
-
-    return NFS3_OK;
 }
 
 MKNOD3res *nfsproc3_mknod_3_svc(MKNOD3args * argp, struct svc_req * rqstp)
-{
+{	//TODO: test that this is being rejected correctly
     static MKNOD3res result;
-    char *path;
-    pre_op_attr pre;
-    post_op_attr post;
-    char obj[NFS_MAXPATHLEN];
-    mode_t new_mode = 0;
-    dev_t dev = 0;
-
-    path = fh_decomp(argp->where.dir);
-    pre = get_pre(path);
-    result.status = join3(cat_name(path, argp->where.name, obj), mknod_args(argp->what, obj, &new_mode, &dev), exports_rw());
-
-    if (result.status == NFS3_OK) {
-	if (argp->what.type == NF3CHR || argp->what.type == NF3BLK)
-			result.status = go_mknod(obj, new_mode, dev);	/* device */
-	else if (argp->what.type == NF3FIFO)
-			result.status = go_mkfifo(obj, new_mode);	/* FIFO */
-	else
-			result.status = go_mksocket(obj, new_mode);	/* socket */
-
-		if (result.status == NFS3_OK) {
-	    result.MKNOD3res_u.resok.obj = fh_comp_type(obj, type_to_mode(argp->what.type));
-	    result.MKNOD3res_u.resok.obj_attributes = get_post(obj, rqstp);
-	}
-    }
-
-    post = get_post_attr(path, argp->where.dir, rqstp);
-
-    /* overlaps with resfail */
-    result.MKNOD3res_u.resok.dir_wcc.before = pre;
-    result.MKNOD3res_u.resok.dir_wcc.after = post;
+    result.status = NFS3ERR_NOTSUPP;
+	
+    result.MKNOD3res_u.resfail.dir_wcc.before.attributes_follow = FALSE;
+    result.MKNOD3res_u.resfail.dir_wcc.after.attributes_follow = FALSE;
 
     return &result;
 }
@@ -485,7 +343,7 @@ REMOVE3res *nfsproc3_remove_3_svc(REMOVE3args * argp, struct svc_req * rqstp)
 	pre_op_attr pre;
 	pre = get_pre(path);
     
-    result.status = join(cat_name(path, argp->object.name, obj), exports_rw());
+    result.status = cat_name(path, argp->object.name, obj);
 
     if (result.status == NFS3_OK) {
 		result.status = go_remove(obj);
@@ -507,7 +365,7 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
     path = fh_decomp(argp->object.dir);
 	pre = get_pre(path);
     
-    result.status = join(cat_name(path, argp->object.name, obj), exports_rw());
+    result.status = cat_name(path, argp->object.name, obj);
 
     if (result.status == NFS3_OK) {
 	    result.status = go_rmdir(obj);
@@ -519,6 +377,9 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
     return &result;
 }
 
+//TODO: Repeated mv's is giving a "changed file id" error, "stale nfs"
+//	Probably due to creating fileid's for non existent paths,
+//  then move file to that path, then lookup id for path.
 RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
 {
     static RENAME3res result;
@@ -533,7 +394,7 @@ RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
     pre_op_attr from_pre;
     from_pre = get_pre(from);
 	
-    result.status = join(cat_name(from, argp->from.name, from_obj), exports_rw());
+    result.status = cat_name(from, argp->from.name, from_obj);
 
     to = fh_decomp(argp->to.dir);
 	
@@ -542,50 +403,32 @@ RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
     
 
     if (result.status == NFS3_OK) {
-		result.status = join(cat_name(to, argp->to.name, to_obj), NFS3_OK);
+		result.status = cat_name(to, argp->to.name, to_obj);
 
 	if (result.status == NFS3_OK) {
 			result.status = go_rename(from_obj, to_obj);
 	}
     }
 
-    post = get_post_attr(from, argp->from.dir, rqstp);
+    post = get_post(from, rqstp);
 
     /* overlaps with resfail */
     result.RENAME3res_u.resok.fromdir_wcc.before = from_pre;
     result.RENAME3res_u.resok.fromdir_wcc.after = post;
     result.RENAME3res_u.resok.todir_wcc.before = to_pre;
-    result.RENAME3res_u.resok.todir_wcc.after = 
-		get_post(to, rqstp);
+    result.RENAME3res_u.resok.todir_wcc.after = get_post(to, rqstp);
 
     return &result;
 }
 
 LINK3res *nfsproc3_link_3_svc(LINK3args * argp, struct svc_req * rqstp)
-{
+{	//TODO: test that this is being rejected correctly
     static LINK3res result;
-    char *path, *old;
-    pre_op_attr pre;
-    post_op_attr post;
-    char obj[NFS_MAXPATHLEN];
+	result.status = NFS3ERR_NOTSUPP;
 
-    path = fh_decomp(argp->link.dir);
-    pre = get_pre(path);
-    result.status = join(cat_name(path, argp->link.name, obj), exports_rw());
-
-	old = fh_decomp(argp->file);
-
-    if (old && result.status == NFS3_OK) {
-		result.status = go_link(old, obj);
-    } else if (!old)
-	result.status = NFS3ERR_STALE;
-
-    post = get_post_attr(path, argp->link.dir, rqstp);
-
-    /* overlaps with resfail */
-    result.LINK3res_u.resok.file_attributes = get_post(old, rqstp);
-    result.LINK3res_u.resok.linkdir_wcc.before = pre;
-    result.LINK3res_u.resok.linkdir_wcc.after = post;
+    result.LINK3res_u.resfail.file_attributes.attributes_follow = FALSE;
+    result.LINK3res_u.resfail.linkdir_wcc.before.attributes_follow = FALSE;
+    result.LINK3res_u.resfail.linkdir_wcc.after.attributes_follow = FALSE;
 
     return &result;
 }
@@ -593,7 +436,7 @@ LINK3res *nfsproc3_link_3_svc(LINK3args * argp, struct svc_req * rqstp)
 READDIR3res *nfsproc3_readdir_3_svc(READDIR3args * argp, struct svc_req * rqstp)
 {
     static READDIR3res result;
-    char *path;
+    char *path;	
     path = fh_decomp(argp->dir);
 
 	READDIR3resok resok;
@@ -618,7 +461,7 @@ READDIR3res *nfsproc3_readdir_3_svc(READDIR3args * argp, struct svc_req * rqstp)
 		resok.reply.entries = NULL;
 
 	//TODO: Give a clear signal of eof vs. not eof
-		resok.reply.eof = TRUE;
+    resok.reply.eof = TRUE;
 	
     uint64 zero = (uint64) 0;
 	memcpy(resok.cookieverf, &zero, NFS3_COOKIEVERFSIZE);
@@ -649,24 +492,21 @@ FSSTAT3res *nfsproc3_fsstat_3_svc(FSSTAT3args * argp, struct svc_req * rqstp)
 {
     static FSSTAT3res result;
     char *path;
-    go_statvfsstruct buf;
 
     path = fh_decomp(argp->fsroot);
 
     /* overlaps with resfail */
     result.FSSTAT3res_u.resok.obj_attributes = get_post(path, rqstp);
 
-    result.status = go_statvfs(path, &buf);
-    if (result.status == NFS3_OK) {
-		result.FSSTAT3res_u.resok.tbytes = (uint64) buf.f_blocks * buf.f_frsize;
-		result.FSSTAT3res_u.resok.fbytes = (uint64) buf.f_bfree * buf.f_frsize;
-		result.FSSTAT3res_u.resok.abytes = (uint64) buf.f_bavail * buf.f_frsize;
-	result.FSSTAT3res_u.resok.tfiles = buf.f_files;
-	result.FSSTAT3res_u.resok.ffiles = buf.f_ffree;
-	result.FSSTAT3res_u.resok.afiles = buf.f_ffree;
-	result.FSSTAT3res_u.resok.invarsec = 0;
-    }
-
+    result.status = NFS3_OK;
+	result.FSSTAT3res_u.resok.tbytes = (uint64)2000000000000;
+	result.FSSTAT3res_u.resok.fbytes = (uint64)1000000000000;
+	result.FSSTAT3res_u.resok.abytes = (uint64)900000000000;
+	result.FSSTAT3res_u.resok.tfiles = 100;
+	result.FSSTAT3res_u.resok.ffiles = 10000;
+	result.FSSTAT3res_u.resok.afiles = 10000;
+	result.FSSTAT3res_u.resok.invarsec = 10000;
+		
     return &result;
 }
 
@@ -701,8 +541,7 @@ FSINFO3res *nfsproc3_fsinfo_3_svc(FSINFO3args * argp, struct svc_req * rqstp)
     return &result;
 }
 
-PATHCONF3res *nfsproc3_pathconf_3_svc(PATHCONF3args * argp,
-				      struct svc_req * rqstp)
+PATHCONF3res *nfsproc3_pathconf_3_svc(PATHCONF3args * argp, struct svc_req * rqstp)
 {
     static PATHCONF3res result;
     char *path;

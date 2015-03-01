@@ -14,7 +14,7 @@ import (
 	"./zipfs"
 	"errors"
 	"fmt"
-"os"
+	"os"
 	"os/signal"
 	"strconv"
 	"strings"
@@ -25,15 +25,14 @@ var ns minfs.MinFS //filesystem being shared
 func main() {
 
 	args := os.Args[1:]
-	
+
 	tfs, err := parseArgs(args)
 
 	if err != nil {
-		fmt.Println("Error starting: ", err)
+		fmt.Println("Error starting:", err)
 	}
 
 	ns = tfs
-		C.exports_parse(C.CString("/"), C.CString("rw"))
 
 	//Handle Ctrl-C so we can quit nicely
 
@@ -48,10 +47,10 @@ func main() {
 }
 
 func shutDown() {
-		fmt.Println("Cleaning up, then quitting.")
-		ns.Close()
-		fmt.Println("Quitting.")
-		os.Exit(1)
+	fmt.Println("Cleaning up, then quitting.")
+	ns.Close()
+	fmt.Println("Quitting.")
+	os.Exit(1)
 }
 
 func parseArgs(args []string) (minfs.MinFS, error) {

@@ -48,17 +48,6 @@
 #define O_TRUNC       01000
 #define O_NONBLOCK	  04000
 
-/* Only includes fields actually used by unfs3 */
-typedef struct _go_statvfsstruct
-{
-        unsigned long  f_frsize;    /* file system block size */
-        uint64         f_blocks;   /* size of fs in f_frsize units */
-        uint64         f_bfree;    /* # free blocks */
-        uint64         f_bavail;   /* # free blocks for non-root */
-        uint64         f_files;    /* # inodes */
-        uint64         f_ffree;    /* # free inodes */
-} go_statvfsstruct;
-
 typedef struct _go_statstruct
 {
         uint32  st_dev;  

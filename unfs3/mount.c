@@ -135,8 +135,11 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	result.fhs_status = MNT3ERR_INVAL;
 	return &result;
     }
-
-    if (!go_realpath(dpath, buf)) {
+	
+	strcpy(buf, dpath);
+	go_statstruct stbuf;
+	
+    if (go_lstat(buf, &stbuf)!=NFS3_OK) {
 	/* the given path does not exist */
 	fprintf(stderr, "Mount svc: Given path does not exist\n");
 	result.fhs_status = MNT3ERR_NOENT;
@@ -149,17 +152,16 @@ mountres3 *mountproc_mnt_3_svc(dirpath * argp, struct svc_req * rqstp)
 	result.fhs_status = MNT3ERR_NAMETOOLONG;
 	return &result;
     }
-
-    if ((exports_options(buf) == -1) || go_accept_mount((svc_getcaller(rqstp->rq_xprt))->sin_addr, buf) != NFS3_OK) {
+	
+    if (go_accept_mount((svc_getcaller(rqstp->rq_xprt))->sin_addr, buf) != NFS3_OK) {
 		/* not exported to this host*/
 	fprintf(stderr, "Mount svc: Not exported to this host at all\n");
 	result.fhs_status = MNT3ERR_ACCES;
 	return &result;
     }
-	
-	go_statstruct stbuf;	
+		
 
-    if (go_lstat(buf, &stbuf)!=NFS3_OK || !S_ISDIR(stbuf.st_mode)) {
+    if (!S_ISDIR(stbuf.st_mode)) {
 		fprintf(stderr, "%s attempted to mount non-directory\n", inet_ntoa(get_remote(rqstp)));
 		result.fhs_status = MNT3ERR_NOTDIR;
 		return &result;
@@ -203,5 +205,10 @@ void *mountproc_umntall_3_svc(U(void *argp), struct svc_req *rqstp)
 
 exports *mountproc_export_3_svc(U(void *argp), U(struct svc_req *rqstp))
 {
+	static exports exports_nfslist;
+	//Setting up export list
+	static exportnode ne_item;
+	ne_item.ex_dir = "/";
+	exports_nfslist = &ne_item;
     return &exports_nfslist;
 }
