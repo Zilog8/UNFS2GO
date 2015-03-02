@@ -15,6 +15,9 @@ import (
 	"unsafe"
 )
 
+const PTRSIZE = 32 << uintptr(^uintptr(0)>>63) //bit size of pointers (32 or 64)
+const PTRBYTES = PTRSIZE / 8                   //bytes of the above
+
 var fddb fdCache //translator for file descriptors
 
 //export go_init
@@ -27,7 +30,7 @@ func go_init() C.int {
 }
 
 //export go_accept_mount
-func go_accept_mount(addr C.int, path *C.char) C.int {
+func go_accept_mount(addr C.uint32, path *C.char) C.int {
 	a := uint32(addr)
 	hostaddress := fmt.Sprintf("%d.%d.%d.%d", byte(a), byte(a>>8), byte(a>>16), byte(a>>24))
 	gpath := pathpkg.Clean("/" + C.GoString(path))
@@ -43,9 +46,9 @@ func go_accept_mount(addr C.int, path *C.char) C.int {
 
 //Readdir results are in the form of two char arrays: One for the entries, and one for the actual file names
 //the names array is just the file names, places at every maxpathlen bytes
-//the entries array is made of entry structs, which are 24-bytes long, every 24 bytes:
-//[8-byte inode][4-byte pointer to filename]
-//[8-byte cookie (entry index in directory list)][4-byte pointer to next entry if any]
+//the entries array is made of entry structs, which are 24-bytes or 32-bytes long:
+//[8-byte inode][4-byte or 8-byte pointer to filename]
+//[8-byte cookie (entry index in directory list)][4-byte or 8-byte pointer to next entry]
 
 //export go_readdir_full
 func go_readdir_full(dirpath *C.char, cookie C.uint64, count C.uint32, names unsafe.Pointer,
@@ -53,13 +56,18 @@ func go_readdir_full(dirpath *C.char, cookie C.uint64, count C.uint32, names uns
 	mp := int(maxpathlen)
 	me := int(maxentries)
 
+	entrySize := 24
+	if PTRSIZE == 64 {
+		entrySize = 32
+	}
+
 	maxByteCount := int(count)
 	startCookie := int(cookie)
 
 	nslice := &reflect.SliceHeader{Data: uintptr(names), Len: mp * me, Cap: mp * me}
 	newNames := *(*[]byte)(unsafe.Pointer(nslice))
 
-	eslice := &reflect.SliceHeader{Data: uintptr(entries), Len: 24 * me, Cap: 24 * me}
+	eslice := &reflect.SliceHeader{Data: uintptr(entries), Len: entrySize * me, Cap: entrySize * me}
 	newEntries := *(*[]byte)(unsafe.Pointer(eslice))
 
 	//null out everything
@@ -90,12 +98,13 @@ func go_readdir_full(dirpath *C.char, cookie C.uint64, count C.uint32, names uns
 	nbIndex := 0 //current index in names buffer
 	ebIndex := 0 //current index in entry buffer
 
-	namepointer := uint32(uintptr(names))
-	entriespointer := uint32(uintptr(entries))
+	namepointer := uint64(uintptr(names))
+	entriespointer := uint64(uintptr(entries))
 
 	for i := startCookie; i < len(arr); i++ {
 		fi := arr[i]
-		maxByteCount -= len(fi.Name()) + 1 + 24 //name string + null terminator + entry struct
+		//name string + null terminator + 2 64-bit numbers + 2 pointers
+		maxByteCount -= len(fi.Name()) + 1 + 16 + 2*PTRBYTES
 
 		if maxByteCount < 0 || (i-startCookie) >= me {
 			return -1 //signify that we didn't reach eof
@@ -103,7 +112,11 @@ func go_readdir_full(dirpath *C.char, cookie C.uint64, count C.uint32, names uns
 
 		if i != startCookie { //only if this isn't the first entry
 			//Put a pointer to this entry as previous entry's Next
-			binary.LittleEndian.PutUint32(newEntries[ebIndex-4:], entriespointer+uint32(ebIndex))
+			if PTRSIZE == 32 {
+				binary.LittleEndian.PutUint32(newEntries[ebIndex-PTRBYTES:], uint32(entriespointer)+uint32(ebIndex))
+			} else {
+				binary.LittleEndian.PutUint64(newEntries[ebIndex-PTRBYTES:], entriespointer+uint64(ebIndex))
+			}
 		}
 
 		fp := pathpkg.Clean(dirp + "/" + fi.Name())
@@ -114,8 +127,12 @@ func go_readdir_full(dirpath *C.char, cookie C.uint64, count C.uint32, names uns
 		ebIndex += 8
 
 		//Put Pointer to Name
-		binary.LittleEndian.PutUint32(newEntries[ebIndex:], namepointer+uint32(nbIndex))
-		ebIndex += 4
+		if PTRSIZE == 32 {
+			binary.LittleEndian.PutUint32(newEntries[ebIndex:], uint32(namepointer)+uint32(nbIndex))
+		} else {
+			binary.LittleEndian.PutUint64(newEntries[ebIndex:], namepointer+uint64(nbIndex))
+		}
+		ebIndex += PTRBYTES
 
 		//Actually write Name to namebuf
 		bytCount := copy(newNames[nbIndex:], []byte(fi.Name()))
@@ -127,8 +144,13 @@ func go_readdir_full(dirpath *C.char, cookie C.uint64, count C.uint32, names uns
 		ebIndex += 8
 
 		//Null out this pointer to "next" in case we're the last entry
+		if PTRSIZE == 32 {
 		binary.LittleEndian.PutUint32(newEntries[ebIndex:], uint32(0))
-		ebIndex += 4
+		} else {
+			binary.LittleEndian.PutUint64(newEntries[ebIndex:], uint64(0))
+		}
+
+		ebIndex += PTRBYTES
 	}
 
 	return C.NFS3_OK
@@ -205,7 +227,7 @@ func go_shutdown() {
 }
 
 //export go_chmod
-func go_chmod(path *C.char, mode C.int) C.int {
+func go_chmod(path *C.char, mode C.mode_t) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
 	err := ns.SetAttribute(pp, "mode", os.FileMode(int(mode)))
 
@@ -217,7 +239,7 @@ func go_chmod(path *C.char, mode C.int) C.int {
 }
 
 //export go_truncate
-func go_truncate(path *C.char, offset3 C.int) C.int {
+func go_truncate(path *C.char, offset3 C.uint64) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
 	off := int64(offset3)
 	err := ns.SetAttribute(pp, "size", off)
@@ -258,7 +280,7 @@ func go_rename(oldpath *C.char, newpath *C.char) C.int {
 }
 
 //export go_modtime
-func go_modtime(path *C.char, modtime C.int) C.int {
+func go_modtime(path *C.char, modtime C.uint32) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
 	mod := time.Unix(int64(modtime), 0)
 	err := ns.SetAttribute(pp, "modtime", mod)
@@ -271,7 +293,7 @@ func go_modtime(path *C.char, modtime C.int) C.int {
 }
 
 //export go_create
-func go_create(pathname *C.char, mode C.int) C.int {
+func go_create(pathname *C.char, mode C.mode_t) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(pathname))
 
 	err := ns.CreateFile(pp)
@@ -292,7 +314,7 @@ func go_create(pathname *C.char, mode C.int) C.int {
 }
 
 //export go_createover
-func go_createover(pathname *C.char, flags C.int, mode C.int) C.int {
+func go_createover(pathname *C.char, mode C.mode_t) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(pathname))
 
 	fi, err := ns.Stat(pp)
@@ -384,7 +406,7 @@ func go_rmdir(path *C.char) C.int {
 }
 
 //export go_mkdir
-func go_mkdir(path *C.char, mode C.int) C.int {
+func go_mkdir(path *C.char, mode C.mode_t) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
 	err := ns.CreateDirectory(pp)
 
@@ -403,7 +425,7 @@ func go_nop(name *C.char) C.int {
 }
 
 //export go_pwrite
-func go_pwrite(path *C.char, buf unsafe.Pointer, count C.int, offset C.int) C.int {
+func go_pwrite(path *C.char, buf unsafe.Pointer, count C.u_int, offset C.uint64) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
 	off := int64(offset)
 	counted := int(count)
@@ -428,7 +450,7 @@ func go_pwrite(path *C.char, buf unsafe.Pointer, count C.int, offset C.int) C.in
 }
 
 //export go_pread
-func go_pread(path *C.char, buf unsafe.Pointer, count C.int, offset C.int) C.int {
+func go_pread(path *C.char, buf unsafe.Pointer, count C.uint32, offset C.uint64) C.int {
 	pp := pathpkg.Clean("/" + C.GoString(path))
 	off := int64(offset)
 	counted := int(count)
