@@ -5,6 +5,7 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -19,7 +20,7 @@ func New(realpath string) (minfs.MinFS, error) {
 	if err == nil {
 		return &osFS{realpath, false}, nil
 	}
-	return nil, err
+	return nil, errorTranslate(err)
 }
 
 func (f *osFS) Close() error {
@@ -37,7 +38,7 @@ func (f *osFS) ReadFile(name string, b []byte, off int64) (int, error) {
 	realname := f.translate(name)
 	fh, err := os.Open(realname)
 	if err != nil {
-		return 0, err
+		return 0, errorTranslate(err)
 	}
 	defer fh.Close()
 	return fh.ReadAt(b, off)
@@ -50,7 +51,7 @@ func (f *osFS) WriteFile(name string, b []byte, off int64) (int, error) {
 	realname := f.translate(name)
 	fh, err := os.OpenFile(realname, os.O_RDWR, 0644)
 	if err != nil {
-		return 0, err
+		return 0, errorTranslate(err)
 	}
 	defer fh.Close()
 	return fh.WriteAt(b, off)
@@ -63,7 +64,7 @@ func (f *osFS) CreateFile(name string) error {
 	realname := f.translate(name)
 	fil, err := os.Create(realname)
 	if err != nil {
-		return err
+		return errorTranslate(err)
 	}
 	fil.Close()
 	return nil
@@ -74,7 +75,7 @@ func (f *osFS) CreateDirectory(name string) error {
 		return os.ErrInvalid
 	}
 	realname := f.translate(name)
-	return os.Mkdir(realname, 0777)
+	return errorTranslate(os.Mkdir(realname, 0777))
 }
 
 func (f *osFS) Move(oldpath string, newpath string) error {
@@ -83,7 +84,7 @@ func (f *osFS) Move(oldpath string, newpath string) error {
 	}
 	orname := f.translate(oldpath)
 	nrname := f.translate(newpath)
-	return os.Rename(orname, nrname)
+	return errorTranslate(os.Rename(orname, nrname))
 }
 
 func (f *osFS) Remove(name string) error {
@@ -91,7 +92,7 @@ func (f *osFS) Remove(name string) error {
 		return os.ErrInvalid
 	}
 	realname := f.translate(name)
-	return os.Remove(realname)
+	return errorTranslate(os.Remove(realname))
 }
 
 func (f *osFS) ReadDirectory(name string) ([]os.FileInfo, error) {
@@ -101,7 +102,7 @@ func (f *osFS) ReadDirectory(name string) ([]os.FileInfo, error) {
 	realname := f.translate(name)
 	fh, err := os.Open(realname)
 	if err != nil {
-		return []os.FileInfo{}, err
+		return []os.FileInfo{}, errorTranslate(err)
 	}
 	defer fh.Close()
 	return fh.Readdir(0)
@@ -114,7 +115,7 @@ func (f *osFS) GetAttribute(path string, attribute string) (interface{}, error) 
 	realname := f.translate(path)
 	fi, err := os.Stat(realname)
 	if err != nil {
-		return nil, err
+		return nil, errorTranslate(err)
 	}
 	switch attribute {
 	case "modtime":
@@ -140,11 +141,11 @@ func (f *osFS) SetAttribute(path string, attribute string, newvalue interface{})
 		}
 		stat := fi.Sys().(*syscall.Stat_t)
 		atime := time.Unix(int64(stat.Atim.Sec), int64(stat.Atim.Nsec))
-		return os.Chtimes(realname, atime, newvalue.(time.Time))
+		return errorTranslate(os.Chtimes(realname, atime, newvalue.(time.Time)))
 	case "mode":
-		return os.Chmod(realname, newvalue.(os.FileMode))
+		return errorTranslate(os.Chmod(realname, newvalue.(os.FileMode)))
 	case "size":
-		return os.Truncate(realname, newvalue.(int64))
+		return errorTranslate(os.Truncate(realname, newvalue.(int64)))
 	}
 	return os.ErrInvalid
 }
@@ -154,7 +155,11 @@ func (f *osFS) Stat(name string) (os.FileInfo, error) {
 		return nil, os.ErrInvalid
 	}
 	realname := f.translate(name)
-	return os.Stat(realname)
+	fi, err := os.Stat(realname)
+	if err != nil {
+		return nil, errorTranslate(err)
+	}
+	return fi, nil
 }
 
 func (f *osFS) String() string {
@@ -168,4 +173,15 @@ func (f *osFS) String() string {
 func (f *osFS) translate(path string) string {
 	path = pathpkg.Clean("/" + path)
 	return pathpkg.Clean(filepath.Join(f.realpath, path))
+}
+
+func errorTranslate(oserr error) error {
+	switch {
+	case oserr == nil:
+		return nil
+	case strings.Contains(oserr.Error(), "no such"):
+		return os.ErrNotExist
+	default:
+		return oserr
+	}
 }

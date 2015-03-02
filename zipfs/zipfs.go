@@ -22,7 +22,7 @@ import (
 	"archive/zip"
 	"fmt"
 	"os"
-	"path"
+	pathpkg "path"
 	"sort"
 	"strings"
 	"time"
@@ -85,8 +85,8 @@ func (fs *zipFS) Close() error {
 }
 
 func zipPath(name string) string {
-	name = path.Clean(name)
-	if !path.IsAbs(name) {
+	name = pathpkg.Clean(name)
+	if !pathpkg.IsAbs(name) {
 		panic(fmt.Sprintf("stat: not an absolute path: %s", name))
 	}
 	return name[1:] // strip leading '/'
@@ -98,7 +98,7 @@ func (fs *zipFS) stat(abspath string) (int, zipFI, error) {
 		// abspath has leading '/' stripped - print it explicitly
 		return 0, zipFI{}, os.ErrNotExist
 	}
-	_, name := path.Split(abspath)
+	_, name := pathpkg.Split(abspath)
 	var file *zip.File
 	if exact {
 		file = fs.list[i] // exact match found - must be a file

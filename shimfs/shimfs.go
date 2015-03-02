@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path"
+	pathpkg "path"
 	"strings"
 	"sync"
 	"time"
@@ -15,14 +15,14 @@ import (
 
 //Acts as a buffer for reads and writes to another MinFS filesystem
 type shimFS struct {
-	tempPath  string        //path to use as a temporary buffer
-	tempSize      int64         //max total space to use for buffer
-	mfs       minfs.MinFS   //Filesystem being shimmed
-	invalid   time.Duration //invalidation time
+	tempPath    string        //path to use as a temporary buffer
+	tempSize    int64         //max total space to use for buffer
+	mfs         minfs.MinFS   //Filesystem being shimmed
+	invalid     time.Duration //invalidation time
 	fiCache     map[string]*shimFI
 	fiCacheLock *sync.RWMutex
-	giudCounter   chan int
-	closed		bool       //is usually false, unless the shimfs has been closed
+	giudCounter chan int
+	closed      bool //is usually false, unless the shimfs has been closed
 }
 
 func New(tempPath string, tempSize int64, mfs minfs.MinFS) (minfs.MinFS, error) {
@@ -31,13 +31,13 @@ func New(tempPath string, tempSize int64, mfs minfs.MinFS) (minfs.MinFS, error) 
 	qa, _ := qw.Readdirnames(-1)
 	for _, qd := range qa {
 		if strings.HasSuffix(qd, ".shimfs") {
-			os.Remove(path.Clean(tempPath + "/" + qd))
+			os.Remove(pathpkg.Clean(tempPath + "/" + qd))
 		}
 	}
 	qw.Close()
 
 	//Check tempPath is usable
-	file, err := os.Create(path.Clean(tempPath + "/test.shimfs"))
+	file, err := os.Create(pathpkg.Clean(tempPath + "/test.shimfs"))
 	if err != nil {
 		return nil, errors.New("Couldn't create in cache directory:" + tempPath + " Error:" + err.Error())
 	}
@@ -46,7 +46,7 @@ func New(tempPath string, tempSize int64, mfs minfs.MinFS) (minfs.MinFS, error) 
 		return nil, errors.New("Couldn't write to cache directory:" + tempPath + " Error:" + err.Error())
 	}
 	file.Close()
-	err = os.Remove(path.Clean(tempPath + "/test.shimfs"))
+	err = os.Remove(pathpkg.Clean(tempPath + "/test.shimfs"))
 	if err != nil {
 		return nil, errors.New("Couldn't delete in cache directory:" + tempPath + " Error:" + err.Error())
 	}
@@ -73,7 +73,7 @@ func (f *shimFS) addFI(fpath string, fi os.FileInfo) *shimFI {
 
 func (f *shimFS) deleteFI(fpath string) {
 	f.fiCacheLock.Lock()
-	delete(f.fiCache, fpath)    //remove item from cache
+	delete(f.fiCache, fpath) //remove item from cache
 	f.fiCacheLock.Unlock()
 
 	//if parent cached, force parent to update dirlist next readdir
@@ -93,7 +93,7 @@ func (f *shimFS) invalidate(fpath string) {
 }
 
 func (f *shimFS) invalidateParent(fpath string) {
-	parent := path.Dir(fpath)
+	parent := pathpkg.Dir(fpath)
 	f.fiCacheLock.RLock()
 	val, ok := f.fiCache[parent] //try-get parent from cache
 	f.fiCacheLock.RUnlock()
@@ -104,7 +104,7 @@ func (f *shimFS) invalidateParent(fpath string) {
 }
 
 func (f *shimFS) interStat(fpath string) (*shimFI, error) {
-	fpath = path.Clean(fpath)
+	fpath = pathpkg.Clean(fpath)
 	f.fiCacheLock.RLock()
 	val, ok := f.fiCache[fpath]
 	f.fiCacheLock.RUnlock()
@@ -143,25 +143,25 @@ func (f *shimFS) Close() error {
 	}
 	f.closed = true
 	f.fiCacheLock.Lock()
-	for key,_ := range f.fiCache {
+	for key, _ := range f.fiCache {
 		delete(f.fiCache, key)
 	}
 	f.fiCacheLock.Unlock()
 
 	return f.mfs.Close()
 }
-	
+
 func (f *shimFS) ReadFile(name string, b []byte, off int64) (int, error) {
 	if f.closed {
 		return 0, os.ErrInvalid
 	}
 	return f.mfs.ReadFile(name, b, off)
-	}
+}
 func (f *shimFS) WriteFile(name string, b []byte, offset int64) (int, error) {
 	if f.closed {
 		return 0, os.ErrInvalid
 	}
-	name = path.Clean(name)
+	name = pathpkg.Clean(name)
 	f.invalidateParent(name)
 	f.invalidate(name)
 	return f.mfs.WriteFile(name, b, offset)
@@ -171,7 +171,7 @@ func (f *shimFS) CreateFile(name string) error {
 	if f.closed {
 		return os.ErrInvalid
 	}
-	name = path.Clean(name)
+	name = pathpkg.Clean(name)
 	f.invalidateParent(name)
 	f.invalidate(name)
 	return f.mfs.CreateFile(name)
@@ -181,7 +181,7 @@ func (f *shimFS) CreateDirectory(name string) error {
 	if f.closed {
 		return os.ErrInvalid
 	}
-	name = path.Clean(name)
+	name = pathpkg.Clean(name)
 	f.invalidateParent(name)
 	return f.mfs.CreateDirectory(name)
 }
@@ -191,8 +191,8 @@ func (f *shimFS) Move(oldpath string, newpath string) error {
 		return os.ErrInvalid
 	}
 
-	oldpath = path.Clean(oldpath)
-	newpath = path.Clean(newpath)
+	oldpath = pathpkg.Clean(oldpath)
+	newpath = pathpkg.Clean(newpath)
 
 	err := f.mfs.Move(oldpath, newpath)
 
@@ -205,36 +205,36 @@ func (f *shimFS) Move(oldpath string, newpath string) error {
 	}
 
 	//Swap the FileInfo from one path to the other
-		f.fiCacheLock.Lock()
+	f.fiCacheLock.Lock()
 	fi := f.fiCache[oldpath]
 	f.fiCache[newpath] = fi
-		delete(f.fiCache, oldpath)
-		f.fiCacheLock.Unlock()
+	delete(f.fiCache, oldpath)
+	f.fiCacheLock.Unlock()
 
 	//Invalidate stat and readdir for what's left
 	f.invalidateParent(oldpath)
 	f.invalidate(newpath)
 	f.invalidateParent(newpath)
 
-		//if is a dir, handle it's children as well
+	//if is a dir, handle it's children as well
 	if fi.isdir {
-			if !strings.HasSuffix(oldpath, "/") {
-				oldpath += "/"
-			}
-			if !strings.HasSuffix(newpath, "/") {
-				newpath += "/"
-			}
-			trimLength := len(oldpath)
-			f.fiCacheLock.Lock()
-			for opath, sfi := range f.fiCache {
-				if strings.HasPrefix(opath, oldpath) {
-					npath := newpath + opath[trimLength:]
-					f.fiCache[npath] = sfi
-					delete(f.fiCache, opath)
-				}
-			}
-			f.fiCacheLock.Unlock()
+		if !strings.HasSuffix(oldpath, "/") {
+			oldpath += "/"
 		}
+		if !strings.HasSuffix(newpath, "/") {
+			newpath += "/"
+		}
+		trimLength := len(oldpath)
+		f.fiCacheLock.Lock()
+		for opath, sfi := range f.fiCache {
+			if strings.HasPrefix(opath, oldpath) {
+				npath := newpath + opath[trimLength:]
+				f.fiCache[npath] = sfi
+				delete(f.fiCache, opath)
+			}
+		}
+		f.fiCacheLock.Unlock()
+	}
 
 	return nil
 }
@@ -243,7 +243,7 @@ func (f *shimFS) Remove(name string) error {
 	if f.closed {
 		return os.ErrInvalid
 	}
-	name = path.Clean(name)
+	name = pathpkg.Clean(name)
 	err := f.mfs.Remove(name)
 	if err != nil {
 		//On the off chance the item was removed, invalidate it's cache
@@ -253,7 +253,7 @@ func (f *shimFS) Remove(name string) error {
 		f.invalidateParent(name)
 		return err
 	}
-	
+
 	f.deleteFI(name)
 
 	return nil
@@ -263,7 +263,7 @@ func (f *shimFS) ReadDirectory(dirpath string) ([]os.FileInfo, error) {
 	if f.closed {
 		return nil, os.ErrInvalid
 	}
-	dirpath = path.Clean(dirpath)
+	dirpath = pathpkg.Clean(dirpath)
 	f.fiCacheLock.RLock()
 	val, ok := f.fiCache[dirpath]
 	f.fiCacheLock.RUnlock()
@@ -288,7 +288,7 @@ func (f *shimFS) ReadDirectory(dirpath string) ([]os.FileInfo, error) {
 		for i, entry := range fia {
 			diritems[i] = entry.Name()
 
-			npath := path.Clean(dirpath + "/" + entry.Name())
+			npath := pathpkg.Clean(dirpath + "/" + entry.Name())
 			f.fiCacheLock.RLock()
 			eval, ok := f.fiCache[npath]
 			f.fiCacheLock.RUnlock()
@@ -323,7 +323,7 @@ func (f *shimFS) GetAttribute(fpath string, attribute string) (interface{}, erro
 	if f.closed {
 		return nil, os.ErrInvalid
 	}
-	fpath = path.Clean(fpath)
+	fpath = pathpkg.Clean(fpath)
 	fi, err := f.interStat(fpath)
 	if err != nil {
 		return nil, err
@@ -346,9 +346,9 @@ func (f *shimFS) SetAttribute(fpath string, attribute string, newvalue interface
 	if f.closed {
 		return os.ErrInvalid
 	}
-	fpath = path.Clean(fpath)
+	fpath = pathpkg.Clean(fpath)
 	f.invalidate(fpath)
-	
+
 	switch attribute {
 	case "modtime":
 		return f.mfs.SetAttribute(fpath, attribute, newvalue)
@@ -370,7 +370,7 @@ func (f *shimFS) Stat(fpath string) (os.FileInfo, error) {
 }
 
 func (f *shimFS) String() string {
-	retVal :=  "shimFS( " + f.mfs.String() + " )"
+	retVal := "shimFS( " + f.mfs.String() + " )"
 	if f.closed {
 		retVal += " (closed)"
 	}
