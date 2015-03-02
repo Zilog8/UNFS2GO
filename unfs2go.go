@@ -41,7 +41,7 @@ func main() {
 		<-cc
 		shutDown()
 	}()
-
+		fmt.Println("Go backend created succesfully. Starting server...")
 	C.start()
 }
 }
