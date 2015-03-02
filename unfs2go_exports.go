@@ -237,7 +237,7 @@ func go_rename(oldpath *C.char, newpath *C.char) C.int {
 	fi, err := ns.Stat(op)
 	if err != nil {
 		retVal, known := errTranslator(err)
-		if !known || known{
+		if !known {
 			fmt.Println("Error on rename, stat", op, ":", err)
 		}
 		return retVal
@@ -246,7 +246,7 @@ func go_rename(oldpath *C.char, newpath *C.char) C.int {
 	err = ns.Move(op, np)
 	if err != nil {
 		retVal, known := errTranslator(err)
-		if !known || known{
+		if !known {
 			fmt.Println("Error on rename, move", op, "to", np, ":", err)
 		}
 		return retVal

@@ -376,7 +376,6 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
     return &result;
 }
 
-//TODO: Repeated mv's is giving a "changed file id" error, "stale nfs"
 RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
 {
     static RENAME3res result;
