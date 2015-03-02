@@ -5,21 +5,6 @@
  * see file LICENSE for license details
  */
 
-#if HAVE_LINUX_EXT2_FS_H == 1
-
-/*
- * presence of linux/ext2_fs.h is a hint that we are on Linux, really
- * including that file doesn't work on Debian, so define the ioctl
- * number here
- */
-#define EXT2_IOC_GETVERSION	0x80047601
-#endif
-
-/*
- * hash function for inode numbers
- */
-#define FH_HASH(n) ((n ^ (n >> 8) ^ (n >> 16) ^ (n >> 24) ^ (n >> 32) ^ (n >> 40) ^ (n >> 48) ^ (n >> 56)) & 0xFF)
-
 /*
  * --------------------------------
  * FILEHANDLE COMPOSITION FUNCTIONS
@@ -43,24 +28,6 @@ int nfh_valid(nfs_fh3 fh)
 
     return TRUE;
 }
-
-/*
- * check whether a filehandle is valid
- */
-int fh_valid(unfs3_fh_t fh)
-{
-    /* invalid filehandles have zero device and inode */
-    return (int) (fh.ino != 0);
-}
-
-/*
- * invalid fh for error returns
- */
-#ifdef __GNUC__
-static const unfs3_fh_t invalid_fh = {.ino = 0,.len = 0,.path = {0} };
-#else
-static const unfs3_fh_t invalid_fh = { 0, 0, {0} };
-#endif
 
 /*
  * get real length of a filehandle
@@ -138,6 +105,7 @@ post_op_fh3 fh_comp_type(const char *path, unsigned int type)
     go_statstruct buf;
 
     if (go_lstat(path, &buf) != NFS3_OK || (buf.st_mode & type) != type) {
+		result.handle_follows = FALSE;
 		return result;
     }
 

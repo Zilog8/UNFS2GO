@@ -378,8 +378,6 @@ RMDIR3res *nfsproc3_rmdir_3_svc(RMDIR3args * argp, struct svc_req * rqstp)
 }
 
 //TODO: Repeated mv's is giving a "changed file id" error, "stale nfs"
-//	Probably due to creating fileid's for non existent paths,
-//  then move file to that path, then lookup id for path.
 RENAME3res *nfsproc3_rename_3_svc(RENAME3args * argp, struct svc_req * rqstp)
 {
     static RENAME3res result;
@@ -438,35 +436,40 @@ READDIR3res *nfsproc3_readdir_3_svc(READDIR3args * argp, struct svc_req * rqstp)
     static READDIR3res result;
     char *path;	
     path = fh_decomp(argp->dir);
-
+	int res;
 	READDIR3resok resok;
-    static entry3 entry[MAX_ENTRIES];
-    count3 count, real_count;
-    static char obj[NFS_MAXPATHLEN * MAX_ENTRIES];
+    static entry3 entries[MAX_ENTRIES];
+    count3 count;
+    static char names[NFS_MAXPATHLEN * MAX_ENTRIES];
 
+	count = (argp->count);
     /* we refuse to return more than 4k from READDIR */
     if (count > 4096)
 	count = 4096;
 
     /* account for size of information heading resok structure */
-    real_count = RESOK_SIZE;
+    count -= RESOK_SIZE;
 	
-	//TODO: Take into account the cookie asked for (argp->cookie)
-	//TODO: Restrain returned bytes by 'count' (argp->count) and 'real_count'
-	go_readdir_full(path, obj, entry, NFS_MAXPATHLEN, MAX_ENTRIES);
+	res = go_readdir_full(path, argp->cookie, count, names, entries, NFS_MAXPATHLEN, MAX_ENTRIES);
 	
-	if (entry[0].name)
-		resok.reply.entries = &entry[0];
+	//if OK, but didn't read the end of the directory, we get back a negative signal
+	if (res<0) {
+		res = NFS3_OK;
+		resok.reply.eof = FALSE;
+	} else if (res == NFS3_OK){
+		resok.reply.eof = TRUE;	
+	}
+	
+	result.status = res;
+	
+	if (entries[0].name)
+		resok.reply.entries = &entries[0];
     else
 		resok.reply.entries = NULL;
 
-	//TODO: Give a clear signal of eof vs. not eof
-    resok.reply.eof = TRUE;
-	
     uint64 zero = (uint64) 0;
 	memcpy(resok.cookieverf, &zero, NFS3_COOKIEVERFSIZE);
 
-    result.status = NFS3_OK;
     result.READDIR3res_u.resok = resok;	
     result.READDIR3res_u.resok.dir_attributes = get_post(path, rqstp);
 
@@ -505,7 +508,7 @@ FSSTAT3res *nfsproc3_fsstat_3_svc(FSSTAT3args * argp, struct svc_req * rqstp)
 	result.FSSTAT3res_u.resok.tfiles = 100;
 	result.FSSTAT3res_u.resok.ffiles = 10000;
 	result.FSSTAT3res_u.resok.afiles = 10000;
-	result.FSSTAT3res_u.resok.invarsec = 10000;
+	result.FSSTAT3res_u.resok.invarsec = 0;
 		
     return &result;
 }

@@ -6,32 +6,6 @@
  */
 
 /*
- * find stat bit corresponding to given NFS file type
- */
-mode_t type_to_mode(ftype3 ftype)
-{
-    switch (ftype) {
-	case NF3REG:
-	    return S_IFREG;
-	case NF3DIR:
-	    return S_IFDIR;
-	case NF3LNK:
-	    return S_IFLNK;
-	case NF3CHR:
-	    return S_IFCHR;
-	case NF3BLK:
-	    return S_IFBLK;
-	case NF3FIFO:
-	    return S_IFIFO;
-	case NF3SOCK:
-	    return S_IFSOCK;
-    }
-
-    /* fix gcc warning */
-    return 0;
-}
-
-/*
  * post_op_attr for error returns
  */
 #ifdef __GNUC__

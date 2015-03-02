@@ -48,9 +48,13 @@ func go_accept_mount(addr C.int, path *C.char) C.int {
 //[8-byte cookie (entry index in directory list)][4-byte pointer to next entry if any]
 
 //export go_readdir_full
-func go_readdir_full(dirpath *C.char, names unsafe.Pointer, entries unsafe.Pointer, maxpathlen C.int, maxentries C.int) C.int {
+func go_readdir_full(dirpath *C.char, cookie C.uint64, count C.uint32, names unsafe.Pointer,
+	entries unsafe.Pointer, maxpathlen C.int, maxentries C.int) C.int {
 	mp := int(maxpathlen)
 	me := int(maxentries)
+
+	maxByteCount := int(count)
+	startCookie := int(cookie)
 
 	nslice := &reflect.SliceHeader{Data: uintptr(names), Len: mp * me, Cap: mp * me}
 	newNames := *(*[]byte)(unsafe.Pointer(nslice))
@@ -58,63 +62,76 @@ func go_readdir_full(dirpath *C.char, names unsafe.Pointer, entries unsafe.Point
 	eslice := &reflect.SliceHeader{Data: uintptr(entries), Len: 24 * me, Cap: 24 * me}
 	newEntries := *(*[]byte)(unsafe.Pointer(eslice))
 
+	//null out everything
+	for i := range newNames {
+		newNames[i] = 0
+	}
+	//null out everything
+	for i := range newEntries {
+		newEntries[i] = 0
+	}
+
 	dirp := pathpkg.Clean("/" + C.GoString(dirpath))
 
 	arr, err := ns.ReadDirectory(dirp)
-
+	if err != nil {
 	retVal, known := errTranslator(err)
 	if !known {
-		fmt.Println("Error on go_readdir_full of", dirp, "):", err)
+			fmt.Println("Error on go_readdir_full of", dirp, ":", err)
+		}
+		return retVal
 	}
 
-	nbCount := 0 //bytes written to names buffer
-	ebCount := 0 //bytes written to entry buffer
+	if startCookie > len(arr) { //if asked for a higher index than exists in dir
+		fmt.Println("Readdir got a bad cookie (", startCookie, ") for", dirp)
+		return C.NFS3ERR_BAD_COOKIE
+	}
+
+	nbIndex := 0 //current index in names buffer
+	ebIndex := 0 //current index in entry buffer
 
 	namepointer := uint32(uintptr(names))
 	entriespointer := uint32(uintptr(entries))
 
-	//Null out the first entry, in case there are none
-	for i := 0; i < 24; i++ {
-		newEntries[i] = byte(0)
-	}
+	for i := startCookie; i < len(arr); i++ {
+		fi := arr[i]
+		maxByteCount -= len(fi.Name()) + 1 + 24 //name string + null terminator + entry struct
 
-	for i, fi := range arr {
-
-		if i == me { //If we've reached max entries, break
-			break
+		if maxByteCount < 0 || (i-startCookie) >= me {
+			return -1 //signify that we didn't reach eof
 		}
 
-		if i != 0 { //only if this isn't the first entry
+		if i != startCookie { //only if this isn't the first entry
 			//Put a pointer to this entry as previous entry's Next
-			binary.LittleEndian.PutUint32(newEntries[ebCount-4:], entriespointer+uint32(ebCount))
+			binary.LittleEndian.PutUint32(newEntries[ebIndex-4:], entriespointer+uint32(ebIndex))
 		}
 
 		fp := pathpkg.Clean(dirp + "/" + fi.Name())
 
 		//Put FileID
 		fd := fddb.GetFD(fp)
-		binary.LittleEndian.PutUint64(newEntries[ebCount:], uint64(fd))
-		ebCount += 8
+		binary.LittleEndian.PutUint64(newEntries[ebIndex:], uint64(fd))
+		ebIndex += 8
 
 		//Put Pointer to Name
-		binary.LittleEndian.PutUint32(newEntries[ebCount:], namepointer+uint32(nbCount))
-		ebCount += 4
+		binary.LittleEndian.PutUint32(newEntries[ebIndex:], namepointer+uint32(nbIndex))
+		ebIndex += 4
 
 		//Actually write Name to namebuf
-		bytCount := copy(newNames[nbCount:], []byte(fi.Name()))
-		newNames[nbCount+bytCount] = byte(0) //null terminate
-		nbCount += mp
+		bytCount := copy(newNames[nbIndex:], []byte(fi.Name()))
+		newNames[nbIndex+bytCount] = byte(0) //null terminate
+		nbIndex += mp
 
 		//Put Cookie
-		binary.LittleEndian.PutUint64(newEntries[ebCount:], uint64(i+1))
-		ebCount += 8
+		binary.LittleEndian.PutUint64(newEntries[ebIndex:], uint64(i+1))
+		ebIndex += 8
 
 		//Null out this pointer to "next" in case we're the last entry
-		binary.LittleEndian.PutUint32(newEntries[ebCount:], uint32(0))
-		ebCount += 4
+		binary.LittleEndian.PutUint32(newEntries[ebIndex:], uint32(0))
+		ebIndex += 4
 	}
 
-	return retVal
+	return C.NFS3_OK
 }
 
 //export go_fgetpath

@@ -29,11 +29,7 @@ typedef struct {
 #pragma pack(4)
 #endif
 
-#define FH_ANY 0
-#define FH_DIR 1
-
 int nfh_valid(nfs_fh3 fh);
-int fh_valid(unfs3_fh_t fh);
 
 u_int fh_length(const unfs3_fh_t *fh);
 
