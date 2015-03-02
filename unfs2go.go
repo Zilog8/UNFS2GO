@@ -30,8 +30,7 @@ func main() {
 
 	if err != nil {
 		fmt.Println("Error starting:", err)
-	}
-
+	} else {
 	ns = tfs
 
 	//Handle Ctrl-C so we can quit nicely
@@ -44,6 +43,7 @@ func main() {
 	}()
 
 	C.start()
+}
 }
 
 func shutDown() {
@@ -100,5 +100,11 @@ func shimfsPrep(args []string) (minfs.MinFS, error) {
 	if err != nil {
 		return nil, err
 	}
-	return shimfs.New(tempFolder, int64(cacheSize*1024*1024), sub)
+
+	retval, err := shimfs.New(tempFolder, int64(cacheSize*1024*1024), sub)
+	if err != nil {
+		sub.Close()
+		return nil, err
+	}
+	return retval, nil
 }

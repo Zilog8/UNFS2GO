@@ -178,7 +178,7 @@ func go_lstat(path *C.char, buf *C.go_statstruct) C.int {
 	if !known {
 		fmt.Println("Error on lstat of", pp, "):", err)
 	}
-	if fi != nil {
+	if err == nil {
 		statTranslator(fi, fddb.GetFD(pp), buf)
 	}
 	return retVal
@@ -460,7 +460,7 @@ func go_sync(path *C.char, buf *C.go_statstruct) C.int {
 	if !known {
 		fmt.Println("Error on sync of", pp, ":", err)
 	}
-	if fi != nil {
+	if err == nil {
 		statTranslator(fi, fddb.GetFD(pp), buf)
 	}
 	return retVal

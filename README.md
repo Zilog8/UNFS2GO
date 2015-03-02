@@ -37,19 +37,20 @@ determined by the individual bind type.
 	
 If you want to use the shimFS it has to be the first argument:
 
-	unfs2go -shim 100 -sftp username:password@example.com:22/
+	unfs2go -shim /tmp/shimfs 100 -sftp username:password@example.com:22/
 
 shimFS acts as a cache-ing layer for another backend. It might be useful for
-network filesystems, if I ever get it to work right. It's somewhat "pre-alpha".
+network filesystems. It's somewhat "alpha", in that cacheing works for
+everything *except* read and write file data.
 	
 Backends:
 
 bind type  | configuration     | description
----------- | ---------------------------- | -----------
+---------- | ----------------------------- | -----------
 -os        | sharedDir                    | shares a system path.
 -zip       | zipfile                      | uses a zip file's contents. Read only.
 -sftp      | user:pass@moo.com:port/Share | uses an sftp server.
--shim      | cachesizeinMiB [otherBind]   | acts as a cache-ing layer for another backend.
+-shim      | tmpDir cacheinMiB [otherBind] | acts as a cache-ing layer for another backend.
 
 Mounting:
 
@@ -63,8 +64,8 @@ This is a horrible hack by a someone who doesn't know much Go and knows even les
 Thus there are obviously some limitations, most of which are probably unknown.
 Of the known:
 
--shimFS currently only uses ram, and also never gives it up. So, it's a giant 
- and intentional memory leak for now.
+-shimFS is limited to cacheing FileInfo and ReadDirectory data for now. Current timeout
+is set for 5 seconds. Data cacheing is imminent.
 
 -In some (many? most?) systems, the server fails at start with an error along the
 lines of "RPC: Authentication error; why = Client credential too weak". It's some
