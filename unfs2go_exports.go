@@ -236,20 +236,25 @@ func go_rename(oldpath *C.char, newpath *C.char) C.int {
 
 	fi, err := ns.Stat(op)
 	if err != nil {
-		retVal, _ := errTranslator(err)
+		retVal, known := errTranslator(err)
+		if !known || known{
+			fmt.Println("Error on rename, stat", op, ":", err)
+		}
 		return retVal
 	}
 
 	err = ns.Move(op, np)
 	if err != nil {
-		retVal, _ := errTranslator(err)
+		retVal, known := errTranslator(err)
+		if !known || known{
+			fmt.Println("Error on rename, move", op, "to", np, ":", err)
+		}
 		return retVal
 	}
 
 	fddb.ReplacePath(op, np, fi.IsDir())
 
-	retVal, _ := errTranslator(nil)
-	return retVal
+	return C.NFS3_OK
 }
 
 //export go_modtime

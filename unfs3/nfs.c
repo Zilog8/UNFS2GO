@@ -52,8 +52,7 @@ GETATTR3res *nfsproc3_getattr_3_svc(GETATTR3args * argp,
     post = get_post(path, rqstp);
 
     result.status = NFS3_OK;
-    result.GETATTR3res_u.resok.obj_attributes =
-	post.post_op_attr_u.attributes;
+    result.GETATTR3res_u.resok.obj_attributes = post.post_op_attr_u.attributes;
 
     return &result;
 }

@@ -53,10 +53,6 @@ char *fh_decomp(nfs_fh3 fh)
 	if (obj->len == 0)   //root
 		return "/";
 	
-	if (obj->len <= 33)  //small path <=32 bytes, plus add 1 for null-termination
-		return obj->path;
-	
-	//long path, look it up
 	return go_fgetpath(obj->ino);
 }
 
@@ -65,13 +61,7 @@ unfs3_fh_t *fh_comp(uint64 ino, const char *path)
 {
 	static unfs3_fh_t new;
 	new.ino = ino;
-	if (strlen(path)<=32) {      //small path <=32 bytes
-		strcpy(new.path,path);
-		new.len = (unsigned)strlen(new.path) + 1;
-	} else {                    //long path, don't even bother to add
-		new.len = 34;           //doesn't matter the length as long as it's greater than 33 (32 + null)
-		strcpy(new.path,"");
-	}
+	new.len = 1;
 
     return &new;
 }
