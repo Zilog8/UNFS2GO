@@ -7,13 +7,13 @@ package main
 */
 import "C"
 import (
-	"./minfs"
-	"./osfs"
-	"./sftpfs"
-	"./shimfs"
-	"./zipfs"
 	"errors"
 	"fmt"
+	"github.com/Zilog8/minfs"
+	"github.com/Zilog8/minfs/osfs"
+	"github.com/Zilog8/minfs/sftpfs"
+	"github.com/Zilog8/minfs/shimfs"
+	"github.com/Zilog8/minfs/zipfs"
 	"os"
 	"os/signal"
 	"strconv"
